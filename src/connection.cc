@@ -11,16 +11,20 @@ Connection::Connection(v8::Local<v8::Function> emitFunction) : Nan::ObjectWrap()
   write_watcher.data = this;
   is_reading = false;
   is_reffed = false;
+  Nan::HandleScope scope;
+
   emitCallback = new Nan::Callback(Nan::To<v8::Function>(emitFunction).ToLocalChecked());
 }
 
 Connection::~Connection() {
   read_watcher.data = NULL;
   write_watcher.data = NULL;
+  delete emitCallback;
+  // emitCallback = NULL;
 
   // uv_poll_stop(&read_watcher);
   // delete write_watcher;
-  printf("Connection::~Connection");
+  // printf("Connection::~Connection\n");
 }
 
 NAN_MODULE_INIT(Connection::init)
@@ -176,9 +180,10 @@ NAN_METHOD(Connection::Finish) {
   self->pq = NULL;
   if(self->is_reffed) {
     self->is_reffed = false;
-    printf("SELF->UNREF!\n");
     self->Unref();
   }
+
+  self->emitCallback->Reset();
 }
 
 NAN_METHOD(Connection::ServerVersion) {

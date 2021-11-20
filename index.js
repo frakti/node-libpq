@@ -36,8 +36,10 @@ if(!module.parent) {
 class PQ extends EventEmitter {
     constructor () {
         super();
-        // const selfx = this;
-        this.native = new NativeLibpqWrapper(this.emit);
+        const selfx = this;
+        this.native = new NativeLibpqWrapper(function (name) {
+                selfx.emit(name);
+        });
         this.connected = false;
     }
 
