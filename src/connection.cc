@@ -43,6 +43,7 @@ NAN_METHOD(Connection::Connect) {
   LOG("Instantiated worker, running it...");
   self->Ref();
   self->is_reffed = true;
+  worker->SaveToPersistent(Nan::New("PQConnectAsyncWorker").ToLocalChecked(), info.This());
   Nan::AsyncQueueWorker(worker);
 }
 
@@ -72,9 +73,12 @@ NAN_METHOD(Connection::Finish) {
   self->ClearLastResult();
   PQfinish(self->pq);
   self->pq = NULL;
+  self->read_watcher.data = NULL;
+  self->write_watcher.data = NULL;
+
   if(self->is_reffed) {
     self->is_reffed = false;
-    //self->Unref();
+    self->Unref();
   }
 }
 
@@ -803,6 +807,7 @@ void Connection::Emit(const char* message) {
   Nan::TryCatch tc;
   Nan::AsyncResource *async_emit_f = new Nan::AsyncResource("libpq:connection:emit");
   async_emit_f->runInAsyncScope(handle(), emit_f, 1, info);
+  delete async_emit_f;
   if(tc.HasCaught()) {
     Nan::FatalException(tc);
   }
