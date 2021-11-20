@@ -3,9 +3,8 @@
 Connection::Connection() : Nan::ObjectWrap() {
   TRACE("Connection::Constructor");
   pq = NULL;
+  poll_watcher = NULL;
   lastResult = NULL;
-  read_watcher.data = this;
-  write_watcher.data = this;
   is_reading = false;
   is_reffed = false;
 }
@@ -43,6 +42,7 @@ NAN_METHOD(Connection::Connect) {
   LOG("Instantiated worker, running it...");
   self->Ref();
   self->is_reffed = true;
+  worker->SaveToPersistent(Nan::New("PQConnectAsyncWorker").ToLocalChecked(), info.This());
   Nan::AsyncQueueWorker(worker);
 }
 
@@ -70,11 +70,28 @@ NAN_METHOD(Connection::Finish) {
 
   self->ReadStop();
   self->ClearLastResult();
-  PQfinish(self->pq);
-  self->pq = NULL;
-  if(self->is_reffed) {
-    self->is_reffed = false;
-    //self->Unref();
+
+  if (self->poll_watcher != NULL) {
+    uv_close(reinterpret_cast<uv_handle_t*> (self->poll_watcher), [](uv_handle_t* handle) {
+      Connection *self = (Connection *)handle->data;
+      handle->data = NULL;
+      PQfinish(self->pq);
+      self->pq = NULL;
+      delete reinterpret_cast<uv_poll_t*>(handle);
+      self->poll_watcher = NULL;
+
+      if(self->is_reffed) {
+        self->is_reffed = false;
+        self->Unref();
+      }
+    });
+  } else {
+    PQfinish(self->pq);
+    self->pq = NULL;
+    if(self->is_reffed) {
+      self->is_reffed = false;
+      self->Unref();
+    }
   }
 }
 
@@ -672,8 +689,10 @@ bool Connection::ConnectDB(const char* paramString) {
   }
 
   int fd = PQsocket(this->pq);
-  uv_poll_init_socket(uv_default_loop(), &(this->read_watcher), fd);
-  uv_poll_init_socket(uv_default_loop(), &(this->write_watcher), fd);
+  this->poll_watcher = new uv_poll_t();
+  this->poll_watcher->data = this;
+
+  uv_poll_init_socket(uv_default_loop(), this->poll_watcher, fd);
 
   TRACE("Connection::ConnectSync::Success");
   return true;
@@ -710,7 +729,7 @@ void Connection::on_io_writable(uv_poll_t* handle, int status, int revents) {
 void Connection::ReadStart() {
   LOG("Connection::ReadStart:starting read watcher");
   is_reading = true;
-  uv_poll_start(&read_watcher, UV_READABLE, on_io_readable);
+  uv_poll_start(poll_watcher, UV_READABLE, on_io_readable);
   LOG("Connection::ReadStart:started read watcher");
 }
 
@@ -718,19 +737,19 @@ void Connection::ReadStop() {
   LOG("Connection::ReadStop:stoping read watcher");
   if(!is_reading) return;
   is_reading = false;
-  uv_poll_stop(&read_watcher);
+  uv_poll_stop(poll_watcher);
   LOG("Connection::ReadStop:stopped read watcher");
 }
 
 void Connection::WriteStart() {
   LOG("Connection::WriteStart:starting write watcher");
-  uv_poll_start(&write_watcher, UV_WRITABLE, on_io_writable);
+  uv_poll_start(poll_watcher, UV_WRITABLE, on_io_writable);
   LOG("Connection::WriteStart:started write watcher");
 }
 
 void Connection::WriteStop() {
   LOG("Connection::WriteStop:stoping write watcher");
-  uv_poll_stop(&write_watcher);
+  uv_poll_stop(poll_watcher);
 }
 
 
@@ -802,7 +821,8 @@ void Connection::Emit(const char* message) {
   TRACE("CALLING EMIT");
   Nan::TryCatch tc;
   Nan::AsyncResource *async_emit_f = new Nan::AsyncResource("libpq:connection:emit");
-  async_emit_f->runInAsyncScope(handle(), emit_f, 1, info);
+  async_emit_f->runInAsyncScope(jsInstance, emit_f, 1, info);
+  delete async_emit_f;
   if(tc.HasCaught()) {
     Nan::FatalException(tc);
   }
