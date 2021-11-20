@@ -4,7 +4,9 @@
 ConnectAsyncWorker::ConnectAsyncWorker(v8::Local<v8::String> paramString, Connection* conn, Nan::Callback* callback)
   : Nan::AsyncWorker(callback), conn(conn), paramString(paramString) { }
 
-  ConnectAsyncWorker::~ConnectAsyncWorker() { }
+  ConnectAsyncWorker::~ConnectAsyncWorker() {
+    printf("ConnectAsyncWorker::~ConnectAsyncWorker()!\n");
+  }
 
   //this method fires within the threadpool and does not
   //block the main node run loop
@@ -16,4 +18,10 @@ ConnectAsyncWorker::ConnectAsyncWorker(v8::Local<v8::String> paramString, Connec
     if(!success) {
       SetErrorMessage(conn->ErrorMessage());
     }
+  }
+
+  void ConnectAsyncWorker::Destroy() {
+    // printf("ConnectAsyncWorker::Destroy()!\n");
+    conn = NULL;
+    delete this;
   }

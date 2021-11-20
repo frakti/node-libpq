@@ -1,6 +1,9 @@
 #include "addon.h"
+#include <iostream>
 
-Connection::Connection() : Nan::ObjectWrap() {
+Nan::Persistent<v8::FunctionTemplate> Connection::constructor;
+
+Connection::Connection(v8::Local<v8::Function> emitFunction) : Nan::ObjectWrap() {
   TRACE("Connection::Constructor");
   pq = NULL;
   lastResult = NULL;
@@ -8,11 +11,102 @@ Connection::Connection() : Nan::ObjectWrap() {
   write_watcher.data = this;
   is_reading = false;
   is_reffed = false;
+  emitCallback = new Nan::Callback(Nan::To<v8::Function>(emitFunction).ToLocalChecked());
+}
+
+Connection::~Connection() {
+  read_watcher.data = NULL;
+  write_watcher.data = NULL;
+
+  // uv_poll_stop(&read_watcher);
+  // delete write_watcher;
+  printf("Connection::~Connection");
+}
+
+NAN_MODULE_INIT(Connection::init)
+{
+    TRACE("Connection::init");
+    Nan::HandleScope scope;
+
+    v8::Local<v8::FunctionTemplate> tpl = Nan::New<v8::FunctionTemplate>(Create);
+    tpl->SetClassName(Nan::New("PQNative").ToLocalChecked());
+    tpl->InstanceTemplate()->SetInternalFieldCount(1);
+
+    //connection initialization & management functions
+    Nan::SetPrototypeMethod(tpl, "$connectSync", ConnectSync);
+    Nan::SetPrototypeMethod(tpl, "$connect", Connect);
+    Nan::SetPrototypeMethod(tpl, "$finish", Finish);
+    Nan::SetPrototypeMethod(tpl, "$getLastErrorMessage", GetLastErrorMessage);
+    Nan::SetPrototypeMethod(tpl, "$resultErrorFields", ResultErrorFields);
+    Nan::SetPrototypeMethod(tpl, "$socket", Socket);
+    Nan::SetPrototypeMethod(tpl, "$serverVersion", ServerVersion);
+
+    //sync query functions
+    Nan::SetPrototypeMethod(tpl, "$exec", Exec);
+    Nan::SetPrototypeMethod(tpl, "$execParams", ExecParams);
+    Nan::SetPrototypeMethod(tpl, "$prepare", Prepare);
+    Nan::SetPrototypeMethod(tpl, "$execPrepared", ExecPrepared);
+
+    //async query functions
+    Nan::SetPrototypeMethod(tpl, "$sendQuery", SendQuery);
+    Nan::SetPrototypeMethod(tpl, "$sendQueryParams", SendQueryParams);
+    Nan::SetPrototypeMethod(tpl, "$sendPrepare", SendPrepare);
+    Nan::SetPrototypeMethod(tpl, "$sendQueryPrepared", SendQueryPrepared);
+    Nan::SetPrototypeMethod(tpl, "$getResult", GetResult);
+
+    //async i/o control functions
+    Nan::SetPrototypeMethod(tpl, "$startRead", StartRead);
+    Nan::SetPrototypeMethod(tpl, "$stopRead", StopRead);
+    Nan::SetPrototypeMethod(tpl, "$startWrite", StartWrite);
+    Nan::SetPrototypeMethod(tpl, "$consumeInput", ConsumeInput);
+    Nan::SetPrototypeMethod(tpl, "$isBusy", IsBusy);
+    Nan::SetPrototypeMethod(tpl, "$setNonBlocking", SetNonBlocking);
+    Nan::SetPrototypeMethod(tpl, "$isNonBlocking", IsNonBlocking);
+    Nan::SetPrototypeMethod(tpl, "$flush", Flush);
+
+    //result accessor functions
+    Nan::SetPrototypeMethod(tpl, "$clear", Clear);
+    Nan::SetPrototypeMethod(tpl, "$ntuples", Ntuples);
+    Nan::SetPrototypeMethod(tpl, "$nfields", Nfields);
+    Nan::SetPrototypeMethod(tpl, "$fname", Fname);
+    Nan::SetPrototypeMethod(tpl, "$ftype", Ftype);
+    Nan::SetPrototypeMethod(tpl, "$getvalue", Getvalue);
+    Nan::SetPrototypeMethod(tpl, "$getisnull", Getisnull);
+    Nan::SetPrototypeMethod(tpl, "$cmdStatus", CmdStatus);
+    Nan::SetPrototypeMethod(tpl, "$cmdTuples", CmdTuples);
+    Nan::SetPrototypeMethod(tpl, "$resultStatus", ResultStatus);
+    Nan::SetPrototypeMethod(tpl, "$resultErrorMessage", ResultErrorMessage);
+
+    //string escaping functions
+  #ifdef ESCAPE_SUPPORTED
+    Nan::SetPrototypeMethod(tpl, "$escapeLiteral", EscapeLiteral);
+    Nan::SetPrototypeMethod(tpl, "$escapeIdentifier", EscapeIdentifier);
+  #endif
+
+    //async notifications
+    Nan::SetPrototypeMethod(tpl, "$notifies", Notifies);
+
+    //COPY IN/OUT
+    Nan::SetPrototypeMethod(tpl, "$putCopyData", PutCopyData);
+    Nan::SetPrototypeMethod(tpl, "$putCopyEnd", PutCopyEnd);
+    Nan::SetPrototypeMethod(tpl, "$getCopyData", GetCopyData);
+
+    //Cancel
+    Nan::SetPrototypeMethod(tpl, "$cancel", Cancel);
+    constructor.Reset(tpl);
+    Nan::Set(
+      target,
+      Nan::New("PQNative").ToLocalChecked(),
+      Nan::GetFunction(tpl).ToLocalChecked()
+    );
+    // target->Set(Nan::New("PQ").ToLocalChecked(), tpl->GetFunction());
 }
 
 NAN_METHOD(Connection::Create) {
   TRACE("Building new instance");
-  Connection* conn = new Connection();
+  v8::Local<v8::Function> cb = info[0].As<v8::Function>();
+
+  Connection* conn = new Connection(cb);
   conn->Wrap(info.This());
 
   info.GetReturnValue().Set(info.This());
@@ -34,16 +128,24 @@ NAN_METHOD(Connection::Connect) {
   TRACE("Connection::Connect");
 
   Connection* self = NODE_THIS();
-
-  v8::Local<v8::Function> callback = info[1].As<v8::Function>();
+  // v8::Local<v8::Function> callback = info[1].As<v8::Function>();
   LOG("About to make callback");
-  Nan::Callback* nanCallback = new Nan::Callback(callback);
+  // ZMIANA!!!!
+
+  // Nan::Callback* nanCallback = new Nan::Callback(info[1].As<v8::Function>());
+  Nan::Callback* nanCallback = new Nan::Callback(Nan::To<v8::Function>(info[1]).ToLocalChecked());
   LOG("About to instantiate worker");
   ConnectAsyncWorker* worker = new ConnectAsyncWorker(info[0].As<v8::String>(), self, nanCallback);
+  // ConnectAsyncWorker* worker = new ConnectAsyncWorker(Nan::To<Nan::Utf8String>(info[0]).FromJust(), self, nanCallback);
   LOG("Instantiated worker, running it...");
   self->Ref();
   self->is_reffed = true;
+
+  worker->SaveToPersistent( Nan::New("PQConnectAsyncWorker").ToLocalChecked(), info.This());
   Nan::AsyncQueueWorker(worker);
+
+
+  worker = NULL;
 }
 
 NAN_METHOD(Connection::Socket) {
@@ -74,7 +176,8 @@ NAN_METHOD(Connection::Finish) {
   self->pq = NULL;
   if(self->is_reffed) {
     self->is_reffed = false;
-    //self->Unref();
+    printf("SELF->UNREF!\n");
+    self->Unref();
   }
 }
 
@@ -790,20 +893,43 @@ void Connection::Emit(const char* message) {
   Nan::HandleScope scope;
 
   TRACE("ABOUT TO EMIT EVENT");
-  v8::Local<v8::Object> jsInstance = handle();
+  // v8::Local<v8::Object> jsInstance = handle();
   TRACE("GETTING 'emit' FUNCTION INSTANCE");
-  v8::Local<v8::Value> emit_v = Nan::Get(jsInstance, Nan::New<v8::String>("emit").ToLocalChecked()).ToLocalChecked();
-  assert(emit_v->IsFunction());
-  v8::Local<v8::Function> emit_f = emit_v.As<v8::Function>();
+  // v8::Local<v8::Value> emit_v = Nan::Get(jsInstance, Nan::New<v8::String>("emit").ToLocalChecked()).ToLocalChecked();
+  // assert(emit_v->IsFunction());
+  // v8::Local<v8::Function> emit_f = emit_v.As<v8::Function>();
 
   v8::Local<v8::String> eventName = Nan::New<v8::String>(message).ToLocalChecked();
   v8::Local<v8::Value> info[1] = { eventName };
 
   TRACE("CALLING EMIT");
+
   Nan::TryCatch tc;
-  Nan::AsyncResource *async_emit_f = new Nan::AsyncResource("libpq:connection:emit");
-  async_emit_f->runInAsyncScope(handle(), emit_f, 1, info);
+  // Nan::AsyncResource *async_emit_f = new Nan::AsyncResource("libpq:connection:emit");
+  // async_emit_f->runInAsyncScope(handle(), emit_f, 1, info);
+  // delete async_emit_f;
+  emitCallback->Call(1, info);
+
   if(tc.HasCaught()) {
     Nan::FatalException(tc);
   }
+
+
+  // pomysły
+  // - przepisanie Emit tego na AsyncQueueWorker ( bez klasy w index.js)
+  // - z klasą w index.js - tutaj uzycie callbacka wstrzykniętego w konstruktor!
+  /////
+
+  //// szukaj --> emitCallback
+
+  // Nan::Callback* nanCallback = new Nan::Callback(Nan::To<v8::Function>(emit_v).ToLocalChecked());
+  //
+  // ConnectAsyncWorker* worker = new ConnectAsyncWorker(info[0].As<v8::String>(), self, nanCallback);
+  // // ConnectAsyncWorker* worker = new ConnectAsyncWorker(Nan::To<Nan::Utf8String>(info[0]).FromJust(), self, nanCallback);
+  // LOG("Instantiated worker, running it...");
+  // self->Ref();
+  // self->is_reffed = true;
+  //
+  // worker->SaveToPersistent( Nan::New("PQConnectAsyncWorker").ToLocalChecked(), info.This());
+  // Nan::AsyncQueueWorker(worker);
 }

@@ -6,6 +6,7 @@
 
 class Connection : public Nan::ObjectWrap {
   public:
+    static  NAN_MODULE_INIT(init);
     static NAN_METHOD(Create);
     static NAN_METHOD(ConnectSync);
     static NAN_METHOD(Connect);
@@ -56,14 +57,20 @@ class Connection : public Nan::ObjectWrap {
     char* ErrorMessage();
     PGconn* pq;
 
+    // static Nan::Persistent<v8::Function> constructor;
+
   private:
+    // static Nan::Persistent<v8::Function> constructor;
+    static Nan::Persistent<v8::FunctionTemplate> constructor;
     PGresult* lastResult;
     uv_poll_t read_watcher;
     uv_poll_t write_watcher;
     bool is_reffed;
     bool is_reading;
+    Nan::Callback* emitCallback;
 
-    Connection();
+    Connection(v8::Local<v8::Function> emitFunction);
+    ~Connection();
 
     static void on_io_readable(uv_poll_t* handle, int status, int revents);
     static void on_io_writable(uv_poll_t* handle, int status, int revents);
