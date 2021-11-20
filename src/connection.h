@@ -58,12 +58,14 @@ class Connection : public Nan::ObjectWrap {
 
   private:
     PGresult* lastResult;
-    uv_poll_t read_watcher;
-    uv_poll_t write_watcher;
+    uv_poll_t poll_watcher;
     bool is_reffed;
     bool is_reading;
+    bool is_success_poll_init;
+    int id;
 
     Connection();
+    ~Connection();
 
     static void on_io_readable(uv_poll_t* handle, int status, int revents);
     static void on_io_writable(uv_poll_t* handle, int status, int revents);
@@ -77,6 +79,7 @@ class Connection : public Nan::ObjectWrap {
     static char** NewCStringArray(v8::Local<v8::Array> jsParams);
     static void DeleteCStringArray(char** array, int length);
     void Emit(const char* message);
+    static void onWatcherClose(uv_handle_t* poll_handle);
 };
 
 #endif

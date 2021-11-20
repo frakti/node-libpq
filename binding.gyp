@@ -26,7 +26,9 @@
       ],
       'conditions' : [
         ['OS=="linux"', {
-            'cflags': ['-fvisibility=hidden']
+            'cflags': [
+                  '-fvisibility=hidden',
+            ]
         }],
         ['OS=="win"', {
           'libraries' : ['ws2_32.lib','secur32.lib','crypt32.lib','wsock32.lib','msvcrt.lib','libpq.lib'],
@@ -39,12 +41,21 @@
           }
         }, { # OS!="win"
           'libraries' : ['-lpq -L<!@(<(pgconfig) --libdir)'],
-          'ldflags' : ['<!@(<(pgconfig) --ldflags)']
+          'ldflags' : [ '<!@(<(pgconfig) --ldflags)']
         }],
         ['OS=="mac"', {
           'xcode_settings': {
             'CLANG_CXX_LIBRARY': 'libc++',
-            'MACOSX_DEPLOYMENT_TARGET': '10.7'
+            'MACOSX_DEPLOYMENT_TARGET': '10.7',
+            'OTHER_CFLAGS': [
+                  '-fsanitize=address',
+                  '-fsanitize-recover=address',
+                  '-fno-omit-frame-pointer',
+                  '-O1'
+            ],
+            'OTHER_LDFLAGS': [
+                '-fsanitize=address'
+            ]
           }
         }]
       ]

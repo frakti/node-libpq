@@ -1,13 +1,19 @@
 #include "addon.h"
+#include <time.h>
 
 Connection::Connection() : Nan::ObjectWrap() {
   TRACE("Connection::Constructor");
   pq = NULL;
   lastResult = NULL;
-  read_watcher.data = this;
-  write_watcher.data = this;
   is_reading = false;
   is_reffed = false;
+  is_success_poll_init = false;
+  id = rand() % 1000;
+  poll_watcher.data = this;
+}
+
+Connection::~Connection() {
+  printf("Connection::~Connection(); ID: %d\n", id);
 }
 
 NAN_METHOD(Connection::Create) {
@@ -43,6 +49,7 @@ NAN_METHOD(Connection::Connect) {
   LOG("Instantiated worker, running it...");
   self->Ref();
   self->is_reffed = true;
+  worker->SaveToPersistent(Nan::New("PQConnectAsyncWorker").ToLocalChecked(), info.This());
   Nan::AsyncQueueWorker(worker);
 }
 
@@ -70,11 +77,26 @@ NAN_METHOD(Connection::Finish) {
 
   self->ReadStop();
   self->ClearLastResult();
-  PQfinish(self->pq);
-  self->pq = NULL;
-  if(self->is_reffed) {
+
+  if (self->is_success_poll_init) {
+    uv_close(reinterpret_cast<uv_handle_t*> (&(self->poll_watcher)), [](uv_handle_t* handle) {
+      int a = rand() % 1000;
+      printf("[libpq][Finish] uv_close callback, LocalID: %d\n", a);
+      Connection *self = (Connection *)handle->data;
+      printf("[libpq][Finish] uv_close callback. LocalID: %d, ID: %d\n", a, self->id);
+
+      PQfinish(self->pq);
+      self->pq = NULL;
+      if(self->is_reffed) {
+        self->is_reffed = false;
+        self->Unref();
+      }
+    });
+  } else if (self->is_reffed) {
+    PQfinish(self->pq);
+    self->pq = NULL;
     self->is_reffed = false;
-    //self->Unref();
+    self->Unref();
   }
 }
 
@@ -663,7 +685,18 @@ NAN_METHOD(Connection::Cancel) {
 
 bool Connection::ConnectDB(const char* paramString) {
   TRACEF("Connection::ConnectDB:Connection parameters: %s\n", paramString);
+
+  clock_t t = clock();
   this->pq = PQconnectdb(paramString);
+  t = clock() - t;
+
+  float secs = ((float)t)/CLOCKS_PER_SEC;
+
+  if (secs < 15) {
+    printf("[libpq][connectDB] Connected within seconds %.3f, ID: %d\n", secs, this->id);
+  } else {
+    printf("[libpq][connectDB][error] Connected within seconds %.3f, ID: %d\n", secs, this->id);
+  }
 
   ConnStatusType status = PQstatus(this->pq);
 
@@ -672,8 +705,14 @@ bool Connection::ConnectDB(const char* paramString) {
   }
 
   int fd = PQsocket(this->pq);
-  uv_poll_init_socket(uv_default_loop(), &(this->read_watcher), fd);
-  uv_poll_init_socket(uv_default_loop(), &(this->write_watcher), fd);
+
+  int socketInitStatus = uv_poll_init_socket(uv_default_loop(), &(this->poll_watcher), fd);
+
+  if (socketInitStatus == 0) {
+    is_success_poll_init = true;
+  } else {
+    printf("[libpq][ConnectDB][error] Non-success poll socket init %d, ID: %d\n", socketInitStatus, this->id);
+  }
 
   TRACE("Connection::ConnectSync::Success");
   return true;
@@ -710,7 +749,7 @@ void Connection::on_io_writable(uv_poll_t* handle, int status, int revents) {
 void Connection::ReadStart() {
   LOG("Connection::ReadStart:starting read watcher");
   is_reading = true;
-  uv_poll_start(&read_watcher, UV_READABLE, on_io_readable);
+  uv_poll_start(&poll_watcher, UV_READABLE, on_io_readable);
   LOG("Connection::ReadStart:started read watcher");
 }
 
@@ -718,19 +757,19 @@ void Connection::ReadStop() {
   LOG("Connection::ReadStop:stoping read watcher");
   if(!is_reading) return;
   is_reading = false;
-  uv_poll_stop(&read_watcher);
+  uv_poll_stop(&poll_watcher);
   LOG("Connection::ReadStop:stopped read watcher");
 }
 
 void Connection::WriteStart() {
   LOG("Connection::WriteStart:starting write watcher");
-  uv_poll_start(&write_watcher, UV_WRITABLE, on_io_writable);
+  uv_poll_start(&poll_watcher, UV_WRITABLE, on_io_writable);
   LOG("Connection::WriteStart:started write watcher");
 }
 
 void Connection::WriteStop() {
   LOG("Connection::WriteStop:stoping write watcher");
-  uv_poll_stop(&write_watcher);
+  uv_poll_stop(&poll_watcher);
 }
 
 
@@ -802,7 +841,8 @@ void Connection::Emit(const char* message) {
   TRACE("CALLING EMIT");
   Nan::TryCatch tc;
   Nan::AsyncResource *async_emit_f = new Nan::AsyncResource("libpq:connection:emit");
-  async_emit_f->runInAsyncScope(handle(), emit_f, 1, info);
+  async_emit_f->runInAsyncScope(jsInstance, emit_f, 1, info);
+  delete async_emit_f;
   if(tc.HasCaught()) {
     Nan::FatalException(tc);
   }
