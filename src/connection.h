@@ -58,10 +58,10 @@ class Connection : public Nan::ObjectWrap {
 
   private:
     PGresult* lastResult;
-    uv_poll_t read_watcher;
-    uv_poll_t write_watcher;
+    uv_poll_t poll_watcher;
     bool is_reffed;
     bool is_reading;
+    bool is_success_poll_init;
 
     Connection();
 
