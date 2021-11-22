@@ -4,10 +4,9 @@ Connection::Connection() : Nan::ObjectWrap() {
   TRACE("Connection::Constructor");
   pq = NULL;
   lastResult = NULL;
-  read_watcher.data = this;
-  write_watcher.data = this;
   is_reading = false;
   is_reffed = false;
+  uv_poll_init_success = false;
 }
 
 NAN_METHOD(Connection::Create) {
@@ -73,13 +72,22 @@ NAN_METHOD(Connection::Finish) {
   self->ClearLastResult();
   PQfinish(self->pq);
   self->pq = NULL;
-  self->read_watcher.data = NULL;
-  self->write_watcher.data = NULL;
+
+  if (self->uv_poll_init_success) {
+    uv_poll_stop(self->read_watcher);
+    uv_poll_stop(self->write_watcher);
+    uv_close(reinterpret_cast<uv_handle_t*> (self->read_watcher), Connection::onWatcherClose);
+    uv_close(reinterpret_cast<uv_handle_t*> (self->write_watcher), Connection::onWatcherClose);
+  }
 
   if(self->is_reffed) {
     self->is_reffed = false;
     self->Unref();
   }
+}
+
+void Connection::onWatcherClose(uv_handle_t* watcher) {
+  delete watcher;
 }
 
 NAN_METHOD(Connection::ServerVersion) {
@@ -676,8 +684,20 @@ bool Connection::ConnectDB(const char* paramString) {
   }
 
   int fd = PQsocket(this->pq);
-  uv_poll_init_socket(uv_default_loop(), &(this->read_watcher), fd);
-  uv_poll_init_socket(uv_default_loop(), &(this->write_watcher), fd);
+  this->read_watcher = new uv_poll_t();
+  memset(this->read_watcher, 0, sizeof(uv_poll_t));
+  this->read_watcher->data = this;
+
+  this->write_watcher = new uv_poll_t();
+  memset(this->write_watcher, 0, sizeof(uv_poll_t));
+  this->write_watcher->data = this;
+
+  int statusX = uv_poll_init_socket(uv_default_loop(), this->read_watcher, fd);
+  uv_poll_init_socket(uv_default_loop(), this->write_watcher, fd);
+
+  if (0 == statusX) {
+    this->uv_poll_init_success = true;
+  }
 
   TRACE("Connection::ConnectSync::Success");
   return true;
@@ -714,7 +734,7 @@ void Connection::on_io_writable(uv_poll_t* handle, int status, int revents) {
 void Connection::ReadStart() {
   LOG("Connection::ReadStart:starting read watcher");
   is_reading = true;
-  uv_poll_start(&read_watcher, UV_READABLE, on_io_readable);
+  uv_poll_start(read_watcher, UV_READABLE, on_io_readable);
   LOG("Connection::ReadStart:started read watcher");
 }
 
@@ -722,19 +742,19 @@ void Connection::ReadStop() {
   LOG("Connection::ReadStop:stoping read watcher");
   if(!is_reading) return;
   is_reading = false;
-  uv_poll_stop(&read_watcher);
+  uv_poll_stop(read_watcher);
   LOG("Connection::ReadStop:stopped read watcher");
 }
 
 void Connection::WriteStart() {
   LOG("Connection::WriteStart:starting write watcher");
-  uv_poll_start(&write_watcher, UV_WRITABLE, on_io_writable);
+  uv_poll_start(write_watcher, UV_WRITABLE, on_io_writable);
   LOG("Connection::WriteStart:started write watcher");
 }
 
 void Connection::WriteStop() {
   LOG("Connection::WriteStop:stoping write watcher");
-  uv_poll_stop(&write_watcher);
+  uv_poll_stop(write_watcher);
 }
 
 
