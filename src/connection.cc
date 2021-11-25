@@ -681,6 +681,9 @@ bool Connection::ConnectDB(const char* paramString) {
   ConnStatusType status = PQstatus(this->pq);
 
   if(status != CONNECTION_OK) {
+    printf("[libpq][ConnectDB][error] connection not ok, status: %d", status);
+    PQfinish(this->pq);
+    this->pq = NULL;
     return false;
   }
 
