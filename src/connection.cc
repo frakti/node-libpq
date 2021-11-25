@@ -66,6 +66,8 @@ NAN_METHOD(Connection::GetLastErrorMessage) {
 NAN_METHOD(Connection::Finish) {
   TRACE("Connection::Finish::finish");
 
+  // printf("[libpq][finish] I'm here\n");
+
   Connection *self = NODE_THIS();
 
   self->ReadStop();
@@ -673,6 +675,7 @@ NAN_METHOD(Connection::Cancel) {
 
 bool Connection::ConnectDB(const char* paramString) {
   TRACEF("Connection::ConnectDB:Connection parameters: %s\n", paramString);
+  // printf("[libpq][connectDB] I'm here\n");
   this->pq = PQconnectdb(paramString);
 
   ConnStatusType status = PQstatus(this->pq);
@@ -690,6 +693,8 @@ bool Connection::ConnectDB(const char* paramString) {
 
   if (0 == statusX) {
     this->uv_poll_init_success = true;
+  } else {
+    printf("[libpq][error] uv_poll_init_socket failed with status code: %d\n", statusX);
   }
 
   TRACE("Connection::ConnectSync::Success");
