@@ -25,6 +25,8 @@ PQ.prototype.connectSync = function(paramString) {
   if(!connected) {
     var err = new Error(this.errorMessage());
     this.finish();
+    this.emit = (...args) => console.info("[connectSync][error] something triggered emit after finished. Args: %j", args);
+
     throw err;
   }
 };
@@ -65,6 +67,7 @@ PQ.prototype.serverVersion = function () {
 PQ.prototype.finish = function() {
   this.connected = false;
   this.$finish();
+  this.emit = (...args) => console.info("[finish][error] something triggered emit after finished. Args: %j", args);
 };
 
 ////SYNC executes a plain text query

@@ -3,11 +3,32 @@
 Connection::Connection() : Nan::ObjectWrap() {
   TRACE("Connection::Constructor");
   pq = NULL;
+  read_watcher = NULL;
   lastResult = NULL;
   is_reading = false;
   is_reffed = false;
   uv_poll_init_success = false;
 }
+
+Connection::~Connection() {
+  if (pq != NULL) {
+    printf("[libpq][destructor][error] pqconn is not null. IsReffed: %d, IsReading: %d, uvPollInitSuccess: %d", is_reffed, is_reading, uv_poll_init_success);
+  }
+
+  if (read_watcher != NULL) {
+    printf("[libpq][destructor][error] watcher is not null. IsReffed: %d, IsReading: %d, uvPollInitSuccess: %d", is_reffed, is_reading, uv_poll_init_success);
+  }
+
+  if (lastResult != NULL) {
+    printf("[libpq][destructor][error] last result is not null. IsReffed: %d, IsReading: %d, uvPollInitSuccess: %d", is_reffed, is_reading, uv_poll_init_success);
+  }
+
+}
+
+// TODO
+// check w destructorze wszystkiego co powinno byc usunięte
+// usunięcie metody `emit` w JS - finish
+
 
 NAN_METHOD(Connection::Create) {
   TRACE("Building new instance");
@@ -72,6 +93,7 @@ NAN_METHOD(Connection::Finish) {
 
   self->ReadStop();
   self->ClearLastResult();
+
   PQfinish(self->pq);
   self->pq = NULL;
 
@@ -689,7 +711,7 @@ bool Connection::ConnectDB(const char* paramString) {
 
   int fd = PQsocket(this->pq);
   this->read_watcher = new uv_poll_t();
-  memset(this->read_watcher, 0, sizeof(uv_poll_t));
+  // memset(this->read_watcher, 0, sizeof(uv_poll_t)); susspicious!!!
   this->read_watcher->data = this;
 
   int statusX = uv_poll_init_socket(uv_default_loop(), this->read_watcher, fd);
@@ -814,6 +836,8 @@ void Connection::DeleteCStringArray(char** array, int length) {
 void Connection::Emit(const char* message) {
   Nan::HandleScope scope;
 
+
+
   TRACE("ABOUT TO EMIT EVENT");
   v8::Local<v8::Object> jsInstance = handle();
   TRACE("GETTING 'emit' FUNCTION INSTANCE");
@@ -827,7 +851,7 @@ void Connection::Emit(const char* message) {
   TRACE("CALLING EMIT");
   Nan::TryCatch tc;
   Nan::AsyncResource *async_emit_f = new Nan::AsyncResource("libpq:connection:emit");
-  async_emit_f->runInAsyncScope(handle(), emit_f, 1, info);
+  async_emit_f->runInAsyncScope(jsInstance, emit_f, 1, info);
   delete async_emit_f;
   if(tc.HasCaught()) {
     Nan::FatalException(tc);

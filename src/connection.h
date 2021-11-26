@@ -64,6 +64,7 @@ class Connection : public Nan::ObjectWrap {
     bool uv_poll_init_success;
 
     Connection();
+    ~Connection();
 
     static void on_io_readable(uv_poll_t* handle, int status, int revents);
     static void on_io_writable(uv_poll_t* handle, int status, int revents);
