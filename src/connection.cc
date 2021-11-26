@@ -12,15 +12,15 @@ Connection::Connection() : Nan::ObjectWrap() {
 
 Connection::~Connection() {
   if (pq != NULL) {
-    printf("[libpq][destructor][error] pqconn is not null. IsReffed: %d, IsReading: %d, uvPollInitSuccess: %d", is_reffed, is_reading, uv_poll_init_success);
+    printf("[libpq][destructor][error] pqconn is not null. IsReffed: %d, IsReading: %d, uvPollInitSuccess: %d\n", is_reffed, is_reading, uv_poll_init_success);
   }
 
-  if (read_watcher != NULL) {
-    printf("[libpq][destructor][error] watcher is not null. IsReffed: %d, IsReading: %d, uvPollInitSuccess: %d", is_reffed, is_reading, uv_poll_init_success);
-  }
+  // if (read_watcher != NULL) {
+  //   printf("[libpq][destructor][error] watcher is not null. IsReffed: %d, IsReading: %d, uvPollInitSuccess: %d\n", is_reffed, is_reading, uv_poll_init_success);
+  // }
 
   if (lastResult != NULL) {
-    printf("[libpq][destructor][error] last result is not null. IsReffed: %d, IsReading: %d, uvPollInitSuccess: %d", is_reffed, is_reading, uv_poll_init_success);
+    printf("[libpq][destructor][error] last result is not null. IsReffed: %d, IsReading: %d, uvPollInitSuccess: %d\n", is_reffed, is_reading, uv_poll_init_success);
   }
 
 }
@@ -106,6 +106,7 @@ NAN_METHOD(Connection::Finish) {
     self->is_reffed = false;
     self->Unref();
   }
+  // self->read_watcher = NULL;
 }
 
 void Connection::onWatcherClose(uv_handle_t* watcher) {
