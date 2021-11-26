@@ -94,19 +94,19 @@ NAN_METHOD(Connection::Finish) {
   self->ReadStop();
   self->ClearLastResult();
 
-  PQfinish(self->pq);
-  self->pq = NULL;
-
   if (self->uv_poll_init_success) {
     uv_poll_stop(self->read_watcher);
     uv_close(reinterpret_cast<uv_handle_t*> (self->read_watcher), Connection::onWatcherClose);
   }
 
+  PQfinish(self->pq);
+  self->pq = NULL;
+
   if(self->is_reffed) {
     self->is_reffed = false;
     self->Unref();
   }
-  // self->read_watcher = NULL;
+  self->read_watcher = NULL;
 }
 
 void Connection::onWatcherClose(uv_handle_t* watcher) {
