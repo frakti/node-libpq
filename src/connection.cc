@@ -11,12 +11,11 @@ Connection::Connection() : Nan::ObjectWrap() {
 }
 
 Connection::~Connection() {
-  if (this->uv_poll_init_success) {
-    uv_poll_stop(this->read_watcher);
+   printf("[libpq][destruction] been here\n");
+  if (this->read_watcher != NULL) {
 
-    uv_close(reinterpret_cast<uv_handle_t*> (this->read_watcher), [](uv_handle_t* handle) {
-      delete reinterpret_cast<uv_poll_t*>(handle);
-    });
+    this->read_watcher->data = NULL;
+    delete this->read_watcher;
   }
 }
 
