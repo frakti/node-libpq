@@ -11,6 +11,7 @@ Connection::Connection() : Nan::ObjectWrap() {
 }
 
 Connection::~Connection() {
+  printf("[libpq][destructor] Been here\n");
   if (pq != NULL) {
     printf("[libpq][destructor][error] pqconn is not null. IsReffed: %d, IsReading: %d, uvPollInitSuccess: %d\n", is_reffed, is_reading, uv_poll_init_success);
   }
@@ -24,11 +25,6 @@ Connection::~Connection() {
   }
 
 }
-
-// TODO
-// check w destructorze wszystkiego co powinno byc usunięte
-// usunięcie metody `emit` w JS - finish
-
 
 NAN_METHOD(Connection::Create) {
   TRACE("Building new instance");
@@ -87,7 +83,7 @@ NAN_METHOD(Connection::GetLastErrorMessage) {
 NAN_METHOD(Connection::Finish) {
   TRACE("Connection::Finish::finish");
 
-  // printf("[libpq][finish] I'm here\n");
+  printf("[libpq][finish] I'm here\n");
 
   Connection *self = NODE_THIS();
 
@@ -106,7 +102,12 @@ NAN_METHOD(Connection::Finish) {
     self->is_reffed = false;
     self->Unref();
   }
-  self->read_watcher = NULL;
+  if (self->read_watcher != NULL) {
+        self->read_watcher->data = NULL;
+        delete self->read_watcher;
+        self->read_watcher = NULL;
+  }
+
 }
 
 void Connection::onWatcherClose(uv_handle_t* watcher) {
@@ -704,9 +705,10 @@ bool Connection::ConnectDB(const char* paramString) {
   ConnStatusType status = PQstatus(this->pq);
 
   if(status != CONNECTION_OK) {
-    printf("[libpq][ConnectDB][error] connection not ok, status: %d", status);
-    PQfinish(this->pq);
-    this->pq = NULL;
+    printf("[libpq][ConnectDB][error] connection not ok, status: %d\n", status);
+    // PQfinish(this->pq);
+    // this->pq = NULL;
+    // can't do that because won't read error
     return false;
   }
 
