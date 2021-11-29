@@ -92,7 +92,7 @@ NAN_METHOD(Connection::Finish) {
 
   if (self->uv_poll_init_success) {
     uv_poll_stop(self->read_watcher);
-    uv_close(reinterpret_cast<uv_handle_t*> (self->read_watcher), Connection::onWatcherClose);
+    // uv_close(reinterpret_cast<uv_handle_t*> (self->read_watcher), Connection::onWatcherClose);
   }
 
   PQfinish(self->pq);
@@ -105,14 +105,15 @@ NAN_METHOD(Connection::Finish) {
 
   if (self->read_watcher != NULL) {
       self->read_watcher->data = NULL;
+      delete self->read_watcher;
       self->read_watcher = NULL;
   }
 }
-
-void Connection::onWatcherClose(uv_handle_t* watcher) {
-  watcher->data = NULL;
-  delete watcher;
-}
+//
+// void Connection::onWatcherClose(uv_handle_t* watcher) {
+//   watcher->data = NULL;
+//   delete watcher;
+// }
 
 NAN_METHOD(Connection::ServerVersion) {
   TRACE("Connection::ServerVersion");
