@@ -102,15 +102,15 @@ NAN_METHOD(Connection::Finish) {
     self->is_reffed = false;
     self->Unref();
   }
-  if (self->read_watcher != NULL) {
-        self->read_watcher->data = NULL;
-        delete self->read_watcher;
-        self->read_watcher = NULL;
-  }
 
+  if (self->read_watcher != NULL) {
+      self->read_watcher->data = NULL;
+      self->read_watcher = NULL;
+  }
 }
 
 void Connection::onWatcherClose(uv_handle_t* watcher) {
+  watcher->data = NULL;
   delete watcher;
 }
 
