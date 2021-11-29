@@ -11,7 +11,7 @@ Connection::Connection() : Nan::ObjectWrap() {
 }
 
 Connection::~Connection() {
-  printf("[libpq][destructor] Been here\n");
+  // printf("[libpq][destructor] Been here\n");
   if (pq != NULL) {
     printf("[libpq][destructor][error] pqconn is not null. IsReffed: %d, IsReading: %d, uvPollInitSuccess: %d\n", is_reffed, is_reading, uv_poll_init_success);
   }
@@ -83,7 +83,7 @@ NAN_METHOD(Connection::GetLastErrorMessage) {
 NAN_METHOD(Connection::Finish) {
   TRACE("Connection::Finish::finish");
 
-  printf("[libpq][finish] I'm here\n");
+  // printf("[libpq][finish] I'm here\n");
 
   Connection *self = NODE_THIS();
 
