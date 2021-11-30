@@ -12,11 +12,11 @@ Connection::Connection() : Nan::ObjectWrap() {
 
 Connection::~Connection() {
    printf("[libpq][destruction] been here\n");
-  if (this->read_watcher != NULL) {
-
-    this->read_watcher->data = NULL;
-    delete this->read_watcher;
-  }
+  // if (this->read_watcher != NULL) {
+  //
+  //   this->read_watcher->data = NULL;
+  //   delete this->read_watcher;
+  // }
 }
 
 NAN_METHOD(Connection::Create) {
@@ -83,18 +83,35 @@ NAN_METHOD(Connection::Finish) {
   self->ReadStop();
   self->ClearLastResult();
 
-  // if (self->uv_poll_init_success) {
-  //   uv_poll_stop(self->read_watcher);
-  //   // uv_close(reinterpret_cast<uv_handle_t*> (self->read_watcher), Connection::onWatcherClose);
-  // }
+  if (self->uv_poll_init_success) {
+    uv_poll_stop(self->read_watcher);
+    // uv_close(reinterpret_cast<uv_handle_t*> (self->read_watcher), Connection::onWatcherClose);
+    uv_close(reinterpret_cast<uv_handle_t*> (self->read_watcher), [](uv_handle_t* handle) {
+      Connection *self = (Connection *)handle->data;
 
-  PQfinish(self->pq);
-  self->pq = NULL;
+      PQfinish(self->pq);
+      self->pq = NULL;
 
-  if(self->is_reffed) {
-    self->is_reffed = false;
-    self->Unref();
+      if(self->is_reffed) {
+        self->is_reffed = false;
+        self->Unref();
+      }
+
+      delete reinterpret_cast<uv_poll_t*>(handle);
+    });
+
+
+  } else {
+    PQfinish(self->pq);
+    self->pq = NULL;
+
+    if(self->is_reffed) {
+      self->is_reffed = false;
+      self->Unref();
+    }
   }
+
+
 
   // if (self->read_watcher != NULL) {
   //     self->read_watcher->data = NULL;
