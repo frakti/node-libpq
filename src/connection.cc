@@ -8,6 +8,11 @@ Connection::Connection() : Nan::ObjectWrap() {
   is_reading = false;
   is_reffed = false;
   uv_poll_init_success = false;
+  is_finishing = false;
+}
+
+Connection::~Connection() {
+  printf("[libpq][destruction] been here\n");
 }
 
 NAN_METHOD(Connection::Create) {
@@ -70,6 +75,11 @@ NAN_METHOD(Connection::Finish) {
   // printf("[libpq][finish] I'm here\n");
 
   Connection *self = NODE_THIS();
+  if (self->is_finishing) {
+    printf("[libpq][finish][error] Triggered second time $finish! \n");
+  }
+
+  self->is_finishing = true;
 
   self->ReadStop();
   self->ClearLastResult();
@@ -91,6 +101,7 @@ NAN_METHOD(Connection::Finish) {
       delete reinterpret_cast<uv_poll_t*>(handle);
     });
   } else {
+    printf("[libpq][finish] uv_poll_init_success is not true\n");
     PQfinish(self->pq);
     self->pq = NULL;
 
@@ -694,7 +705,12 @@ bool Connection::ConnectDB(const char* paramString) {
   // printf("[libpq][connectDB] I'm here\n");
   this->pq = PQconnectdb(paramString);
 
+  if (this->is_finishing) {
+    printf("[libpq][ConnectDB][error] $finish already triggered\n");
+  }
+
   ConnStatusType status = PQstatus(this->pq);
+
 
   if(status != CONNECTION_OK) {
     printf("[libpq][ConnectDB][error] connection not ok, status: %d\n", status);
