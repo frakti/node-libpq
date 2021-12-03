@@ -75,6 +75,11 @@ NAN_METHOD(Connection::Finish) {
     uv_close(reinterpret_cast<uv_handle_t*> (self->poll_watcher), [](uv_handle_t* handle) {
       Connection *self = (Connection *)handle->data;
       handle->data = NULL;
+
+      if(0 != close(self->fd)) {
+        printf("[libpq][uv_close_cb][error] unable to close fd %d\n", self->fd);
+      }
+
       PQfinish(self->pq);
       self->pq = NULL;
       self->poll_watcher = NULL;
@@ -690,10 +695,11 @@ bool Connection::ConnectDB(const char* paramString) {
   }
 
   int fd = PQsocket(this->pq);
+  this->fd = fcntl(fd, F_DUPFD_CLOEXEC, 0);
   this->poll_watcher = new uv_poll_t();
   this->poll_watcher->data = this;
 
-  uv_poll_init_socket(uv_default_loop(), this->poll_watcher, fd);
+  uv_poll_init_socket(uv_default_loop(), this->poll_watcher, this->fd);
 
   TRACE("Connection::ConnectSync::Success");
   return true;

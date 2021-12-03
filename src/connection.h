@@ -62,6 +62,7 @@ class Connection : public Nan::ObjectWrap {
     uv_poll_t* poll_watcher;
     bool is_reffed;
     bool is_reading;
+    int fd;
 
     Connection();
 
