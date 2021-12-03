@@ -26,10 +26,7 @@
       ],
       'conditions' : [
         ['OS=="linux"', {
-            'cflags': [
-                '-fvisibility=hidden'
-            ],
-            # 'ldflags' : []
+            'cflags': ['-fvisibility=hidden']
         }],
         ['OS=="win"', {
           'libraries' : ['ws2_32.lib','secur32.lib','crypt32.lib','wsock32.lib','msvcrt.lib','libpq.lib'],
