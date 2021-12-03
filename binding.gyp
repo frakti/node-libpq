@@ -26,7 +26,13 @@
       ],
       'conditions' : [
         ['OS=="linux"', {
-            'cflags': ['-fvisibility=hidden']
+            'cflags': [
+                  '-fvisibility=hidden',
+                  '-fsanitize=address',
+                  '-fsanitize-recover=address',
+                  '-fno-omit-frame-pointer',
+                  '-O1'
+            ]
         }],
         ['OS=="win"', {
           'libraries' : ['ws2_32.lib','secur32.lib','crypt32.lib','wsock32.lib','msvcrt.lib','libpq.lib'],
@@ -39,7 +45,7 @@
           }
         }, { # OS!="win"
           'libraries' : ['-lpq -L<!@(<(pgconfig) --libdir)'],
-          'ldflags' : ['<!@(<(pgconfig) --ldflags)']
+          'ldflags' : ['-fsanitize=address', '-static-libasan', '<!@(<(pgconfig) --ldflags)']
         }],
         ['OS=="mac"', {
           'xcode_settings': {
