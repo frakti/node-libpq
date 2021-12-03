@@ -9,6 +9,7 @@ Connection::Connection() : Nan::ObjectWrap() {
   is_reffed = false;
   uv_poll_init_success = false;
   is_finishing = false;
+  id = rand() % 1000;
 }
 
 Connection::~Connection() {
@@ -84,13 +85,21 @@ NAN_METHOD(Connection::Finish) {
   self->ReadStop();
   self->ClearLastResult();
 
+  uv_poll_stop(self->poll_watcher);
+
   if (self->uv_poll_init_success) {
-    uv_poll_stop(self->poll_watcher);
+    // uv_poll_stop(self->poll_watcher);
     // uv_close(reinterpret_cast<uv_handle_t*> (self->poll_watcher), Connection::onWatcherClose);
+
     uv_close(reinterpret_cast<uv_handle_t*> (self->poll_watcher), [](uv_handle_t* handle) {
       Connection *self = (Connection *)handle->data;
 
+      // if(0 != close(self->fd))
+      //   printf("[libpq][uv_close_cb] unable to close fd %d\n", self->fd);
+
+      handle->data = NULL;
       PQfinish(self->pq);
+      printf("[libpq][uv_close_cb] After PQFinish (ID %d)\n", self->id);
       self->pq = NULL;
 
       if(self->is_reffed) {
@@ -104,7 +113,11 @@ NAN_METHOD(Connection::Finish) {
     printf("[libpq][finish] uv_poll_init_success is not true\n");
     PQfinish(self->pq);
     self->pq = NULL;
-
+    // ----------------------------------
+    // self->poll_watcher->data = NULL;
+    // delete self->poll_watcher;
+    // self->poll_watcher = NULL;
+    // ----------------------------------
     if(self->is_reffed) {
       self->is_reffed = false;
       self->Unref();
@@ -703,6 +716,9 @@ NAN_METHOD(Connection::Cancel) {
 bool Connection::ConnectDB(const char* paramString) {
   TRACEF("Connection::ConnectDB:Connection parameters: %s\n", paramString);
   // printf("[libpq][connectDB] I'm here\n");
+  if (this->pq != NULL)  {
+    printf("[libpq][connectDB] WTF, creating connection when there is already one\n");
+  }
   this->pq = PQconnectdb(paramString);
 
   if (this->is_finishing) {
@@ -711,17 +727,19 @@ bool Connection::ConnectDB(const char* paramString) {
 
   ConnStatusType status = PQstatus(this->pq);
 
-
   if(status != CONNECTION_OK) {
     printf("[libpq][ConnectDB][error] connection not ok, status: %d\n", status);
     return false;
   }
 
   int fd = PQsocket(this->pq);
+  this->fd = fd; //fcntl(fd, F_DUPFD_CLOEXEC, 0);
+
   this->poll_watcher = new uv_poll_t();
   this->poll_watcher->data = this;
+  printf("[libpq][ConnectDB] Socket FD %d / %d (ID %d)\n", fd, this->fd, this->id);
 
-  int statusX = uv_poll_init_socket(uv_default_loop(), this->poll_watcher, fcntl(fd, F_DUPFD_CLOEXEC, 0));
+  int statusX = uv_poll_init_socket(uv_default_loop(), this->poll_watcher, this->fd); // );
 
   if (0 == statusX) {
     this->uv_poll_init_success = true;

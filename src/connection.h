@@ -3,6 +3,7 @@
 
 #include <nan.h>
 #include <libpq-fe.h>
+#include <unistd.h>
 
 class Connection : public Nan::ObjectWrap {
   public:
@@ -63,6 +64,8 @@ class Connection : public Nan::ObjectWrap {
     bool is_reading;
     bool is_finishing;
     bool uv_poll_init_success;
+    int id;
+    int fd;
 
     Connection();
     ~Connection();
