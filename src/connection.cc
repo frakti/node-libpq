@@ -77,13 +77,14 @@ NAN_METHOD(Connection::Finish) {
       handle->data = NULL;
       PQfinish(self->pq);
       self->pq = NULL;
-      delete reinterpret_cast<uv_poll_t*>(handle);
       self->poll_watcher = NULL;
 
       if(self->is_reffed) {
         self->is_reffed = false;
         self->Unref();
       }
+
+      delete reinterpret_cast<uv_poll_t*>(handle);
     });
   } else {
     PQfinish(self->pq);
