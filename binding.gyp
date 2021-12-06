@@ -28,10 +28,6 @@
         ['OS=="linux"', {
             'cflags': [
                   '-fvisibility=hidden',
-                  '-fsanitize=address',
-                  '-fsanitize-recover=address',
-                  '-fno-omit-frame-pointer',
-                  '-O1'
             ]
         }],
         ['OS=="win"', {
@@ -45,7 +41,7 @@
           }
         }, { # OS!="win"
           'libraries' : ['-lpq -L<!@(<(pgconfig) --libdir)'],
-          'ldflags' : ['-fsanitize=address', '-static-libasan', '<!@(<(pgconfig) --ldflags)']
+          'ldflags' : [ '<!@(<(pgconfig) --ldflags)']
         }],
         ['OS=="mac"', {
           'xcode_settings': {
