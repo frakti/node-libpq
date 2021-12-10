@@ -1,12 +1,19 @@
 #include "addon.h"
+#include <time.h>
 
 Connection::Connection() : Nan::ObjectWrap() {
   TRACE("Connection::Constructor");
   pq = NULL;
-  poll_watcher.data = this;
+  poll_watcher = NULL;
   lastResult = NULL;
   is_reading = false;
   is_reffed = false;
+  id = rand() % 1000;
+}
+
+
+Connection::~Connection() {
+  printf("Connection::~Connection(); ID: %d\n", id);
 }
 
 NAN_METHOD(Connection::Create) {
@@ -71,23 +78,28 @@ NAN_METHOD(Connection::Finish) {
   self->ReadStop();
   self->ClearLastResult();
 
-  uv_close(reinterpret_cast<uv_handle_t*> (&(self->poll_watcher)), [](uv_handle_t* handle) {
-    Connection *self = (Connection *)handle->data;
-    handle->data = NULL;
+  PQfinish(self->pq);
+  self->pq = NULL;
+  if(self->is_reffed) {
+    self->is_reffed = false;
+    self->Unref();
+  }
 
-    // if(0 != close(self->fd)) {
-    //   printf("[libpq][uv_close_cb][error] unable to close fd %d\n", self->fd);
-    // }
+  if (self->poll_watcher != NULL) {
+    int isActive = uv_is_active((uv_handle_t*) self->poll_watcher);
 
-    PQfinish(self->pq);
-    self->pq = NULL;
-    self->poll_watcher.data = NULL;
-
-    if(self->is_reffed) {
-      self->is_reffed = false;
-      self->Unref();
+    if (isActive != 0) {
+      printf("[libpq][Finish][error] Handler is Active. IsActive: %d, ID: %d\n", isActive, self->id);
     }
-  });
+
+    uv_close(reinterpret_cast<uv_handle_t*> (self->poll_watcher), [](uv_handle_t* handle) {
+      Connection *self = (Connection *)handle->data;
+      delete self->poll_watcher;
+      self->poll_watcher = NULL;
+    });
+  } else {
+
+  }
 }
 
 NAN_METHOD(Connection::ServerVersion) {
@@ -675,7 +687,18 @@ NAN_METHOD(Connection::Cancel) {
 
 bool Connection::ConnectDB(const char* paramString) {
   TRACEF("Connection::ConnectDB:Connection parameters: %s\n", paramString);
+
+  clock_t t = clock();
   this->pq = PQconnectdb(paramString);
+  t = clock() - t;
+
+  float secs = ((float)t)/CLOCKS_PER_SEC;
+
+  if (secs < 15) {
+    printf("[libpq][connectDB] Connected within seconds %.3f, ID: %d\n", secs, this->id);
+  } else {
+    printf("[libpq][connectDB][error] Connected within seconds %.3f, ID: %d\n", secs, this->id);
+  }
 
   ConnStatusType status = PQstatus(this->pq);
 
@@ -684,11 +707,14 @@ bool Connection::ConnectDB(const char* paramString) {
   }
 
   int fd = PQsocket(this->pq);
-  // this->fd = fcntl(fd, F_DUPFD_CLOEXEC, 0);
-  // this->poll_watcher = new uv_poll_t();
-  // this->poll_watcher->data = this;
+  this->poll_watcher = new uv_poll_t();
+  this->poll_watcher->data = this;
 
-  uv_poll_init_socket(uv_default_loop(), &(this->poll_watcher), fd);
+  int socketInitStatus = uv_poll_init_socket(uv_default_loop(), this->poll_watcher, fd);
+
+  if (socketInitStatus != 0) {
+    printf("[libpq][ConnectDB][error] Non-success poll socket init %d, ID: %d\n", socketInitStatus, this->id);
+  }
 
   TRACE("Connection::ConnectSync::Success");
   return true;
@@ -698,11 +724,11 @@ char * Connection::ErrorMessage() {
   return PQerrorMessage(this->pq);
 }
 
-void Connection::on_io_readable(uv_poll_t* handle, int status, int events) {
+void Connection::on_io_readable(uv_poll_t* handle, int status, int revents) {
   LOG("Connection::on_io_readable");
   TRACEF("Connection::on_io_readable:status %d\n", status);
-  TRACEF("Connection::on_io_readable:revents %d\n", events);
-  if(events & UV_READABLE) {
+  TRACEF("Connection::on_io_readable:revents %d\n", revents);
+  if(revents & UV_READABLE) {
     LOG("Connection::on_io_readable UV_READABLE");
     Connection* self = (Connection*) handle->data;
     LOG("Got connection pointer");
@@ -710,11 +736,11 @@ void Connection::on_io_readable(uv_poll_t* handle, int status, int events) {
   }
 }
 
-void Connection::on_io_writable(uv_poll_t* handle, int status, int events) {
+void Connection::on_io_writable(uv_poll_t* handle, int status, int revents) {
   LOG("Connection::on_io_writable");
   TRACEF("Connection::on_io_writable:status %d\n", status);
-  TRACEF("Connection::on_io_writable:revents %d\n", events);
-  if(events & UV_WRITABLE) {
+  TRACEF("Connection::on_io_writable:revents %d\n", revents);
+  if(revents & UV_WRITABLE) {
     LOG("Connection::on_io_readable UV_WRITABLE");
     Connection* self = (Connection*) handle->data;
     self->WriteStop();
@@ -725,7 +751,7 @@ void Connection::on_io_writable(uv_poll_t* handle, int status, int events) {
 void Connection::ReadStart() {
   LOG("Connection::ReadStart:starting read watcher");
   is_reading = true;
-  uv_poll_start(&poll_watcher, UV_READABLE, on_io_readable);
+  uv_poll_start(poll_watcher, UV_READABLE, on_io_readable);
   LOG("Connection::ReadStart:started read watcher");
 }
 
@@ -733,19 +759,19 @@ void Connection::ReadStop() {
   LOG("Connection::ReadStop:stoping read watcher");
   if(!is_reading) return;
   is_reading = false;
-  uv_poll_stop(&poll_watcher);
+  uv_poll_stop(poll_watcher);
   LOG("Connection::ReadStop:stopped read watcher");
 }
 
 void Connection::WriteStart() {
   LOG("Connection::WriteStart:starting write watcher");
-  uv_poll_start(&poll_watcher, UV_WRITABLE, on_io_writable);
+  uv_poll_start(poll_watcher, UV_WRITABLE, on_io_writable);
   LOG("Connection::WriteStart:started write watcher");
 }
 
 void Connection::WriteStop() {
   LOG("Connection::WriteStop:stoping write watcher");
-  uv_poll_stop(&poll_watcher);
+  uv_poll_stop(poll_watcher);
 }
 
 
