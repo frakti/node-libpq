@@ -7,6 +7,7 @@
 
 class Connection : public Nan::ObjectWrap {
   public:
+    // static NAN_MODULE_INIT(init);
     static NAN_METHOD(Create);
     static NAN_METHOD(ConnectSync);
     static NAN_METHOD(Connect);
@@ -53,6 +54,8 @@ class Connection : public Nan::ObjectWrap {
     static NAN_METHOD(GetCopyData);
     static NAN_METHOD(Cancel);
 
+    // static Nan::Persistent<v8::Function> constructor;
+    // static Nan::Persistent<v8::FunctionTemplate> constructor;
     bool ConnectDB(const char* paramString);
     char* ErrorMessage();
     PGconn* pq;
@@ -63,8 +66,9 @@ class Connection : public Nan::ObjectWrap {
     bool is_reffed;
     bool is_reading;
     int id;
+    Nan::Callback emitCallback;
 
-    Connection();
+    Connection(v8::Local<v8::Function> emitFunction);
     ~Connection();
 
     static void on_io_readable(uv_poll_t* handle, int status, int revents);

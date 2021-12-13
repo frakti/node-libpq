@@ -4,7 +4,7 @@
 NAN_MODULE_INIT(InitAddon) {
 
   v8::Local<v8::FunctionTemplate> tpl = Nan::New<v8::FunctionTemplate>(Connection::Create);
-  tpl->SetClassName(Nan::New("PQ").ToLocalChecked());
+  tpl->SetClassName(Nan::New("PQNative").ToLocalChecked());
   tpl->InstanceTemplate()->SetInternalFieldCount(1);
 
   //connection initialization & management functions
@@ -70,7 +70,11 @@ NAN_MODULE_INIT(InitAddon) {
   Nan::SetPrototypeMethod(tpl, "$cancel", Connection::Cancel);
 
   Nan::Set(target,
-      Nan::New("PQ").ToLocalChecked(), Nan::GetFunction(tpl).ToLocalChecked());
+      Nan::New("PQNative").ToLocalChecked(), Nan::GetFunction(tpl).ToLocalChecked());
 }
 
 NODE_MODULE(addon, InitAddon)
+
+// NAN_MODULE_INIT(InitAddon) {
+//   Connection::init(target);
+// }

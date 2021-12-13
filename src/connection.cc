@@ -1,7 +1,7 @@
 #include "addon.h"
 #include <time.h>
 
-Connection::Connection() : Nan::ObjectWrap() {
+Connection::Connection(v8::Local<v8::Function> emitFunction) : Nan::ObjectWrap(), emitCallback(emitFunction) {
   TRACE("Connection::Constructor");
   pq = NULL;
   poll_watcher = NULL;
@@ -9,16 +9,98 @@ Connection::Connection() : Nan::ObjectWrap() {
   is_reading = false;
   is_reffed = false;
   id = rand() % 1000;
+  // emitCallback = ; // callback(function)
 }
+
+// NAN_MODULE_INIT(Connection::init)
+// {
+//     TRACE("Connection::init");
+//     Nan::HandleScope scope;
+//
+//     v8::Local<v8::FunctionTemplate> tpl = Nan::New<v8::FunctionTemplate>(Create);
+//     tpl->SetClassName(Nan::New("PQNative").ToLocalChecked());
+//     tpl->InstanceTemplate()->SetInternalFieldCount(1);
+//
+//     //connection initialization & management functions
+//     Nan::SetPrototypeMethod(tpl, "$connectSync", ConnectSync);
+//     Nan::SetPrototypeMethod(tpl, "$connect", Connect);
+//     Nan::SetPrototypeMethod(tpl, "$finish", Finish);
+//     Nan::SetPrototypeMethod(tpl, "$getLastErrorMessage", GetLastErrorMessage);
+//     Nan::SetPrototypeMethod(tpl, "$resultErrorFields", ResultErrorFields);
+//     Nan::SetPrototypeMethod(tpl, "$socket", Socket);
+//     Nan::SetPrototypeMethod(tpl, "$serverVersion", ServerVersion);
+//
+//     //sync query functions
+//     Nan::SetPrototypeMethod(tpl, "$exec", Exec);
+//     Nan::SetPrototypeMethod(tpl, "$execParams", ExecParams);
+//     Nan::SetPrototypeMethod(tpl, "$prepare", Prepare);
+//     Nan::SetPrototypeMethod(tpl, "$execPrepared", ExecPrepared);
+//
+//     //async query functions
+//     Nan::SetPrototypeMethod(tpl, "$sendQuery", SendQuery);
+//     Nan::SetPrototypeMethod(tpl, "$sendQueryParams", SendQueryParams);
+//     Nan::SetPrototypeMethod(tpl, "$sendPrepare", SendPrepare);
+//     Nan::SetPrototypeMethod(tpl, "$sendQueryPrepared", SendQueryPrepared);
+//     Nan::SetPrototypeMethod(tpl, "$getResult", GetResult);
+//
+//     //async i/o control functions
+//     Nan::SetPrototypeMethod(tpl, "$startRead", StartRead);
+//     Nan::SetPrototypeMethod(tpl, "$stopRead", StopRead);
+//     Nan::SetPrototypeMethod(tpl, "$startWrite", StartWrite);
+//     Nan::SetPrototypeMethod(tpl, "$consumeInput", ConsumeInput);
+//     Nan::SetPrototypeMethod(tpl, "$isBusy", IsBusy);
+//     Nan::SetPrototypeMethod(tpl, "$setNonBlocking", SetNonBlocking);
+//     Nan::SetPrototypeMethod(tpl, "$isNonBlocking", IsNonBlocking);
+//     Nan::SetPrototypeMethod(tpl, "$flush", Flush);
+//
+//     //result accessor functions
+//     Nan::SetPrototypeMethod(tpl, "$clear", Clear);
+//     Nan::SetPrototypeMethod(tpl, "$ntuples", Ntuples);
+//     Nan::SetPrototypeMethod(tpl, "$nfields", Nfields);
+//     Nan::SetPrototypeMethod(tpl, "$fname", Fname);
+//     Nan::SetPrototypeMethod(tpl, "$ftype", Ftype);
+//     Nan::SetPrototypeMethod(tpl, "$getvalue", Getvalue);
+//     Nan::SetPrototypeMethod(tpl, "$getisnull", Getisnull);
+//     Nan::SetPrototypeMethod(tpl, "$cmdStatus", CmdStatus);
+//     Nan::SetPrototypeMethod(tpl, "$cmdTuples", CmdTuples);
+//     Nan::SetPrototypeMethod(tpl, "$resultStatus", ResultStatus);
+//     Nan::SetPrototypeMethod(tpl, "$resultErrorMessage", ResultErrorMessage);
+//
+//     //string escaping functions
+//   #ifdef ESCAPE_SUPPORTED
+//     Nan::SetPrototypeMethod(tpl, "$escapeLiteral", EscapeLiteral);
+//     Nan::SetPrototypeMethod(tpl, "$escapeIdentifier", EscapeIdentifier);
+//   #endif
+//
+//     //async notifications
+//     Nan::SetPrototypeMethod(tpl, "$notifies", Notifies);
+//
+//     //COPY IN/OUT
+//     Nan::SetPrototypeMethod(tpl, "$putCopyData", PutCopyData);
+//     Nan::SetPrototypeMethod(tpl, "$putCopyEnd", PutCopyEnd);
+//     Nan::SetPrototypeMethod(tpl, "$getCopyData", GetCopyData);
+//
+//     //Cancel
+//     Nan::SetPrototypeMethod(tpl, "$cancel", Cancel);
+//     constructor.Reset(tpl);
+//     Nan::Set(
+//       target,
+//       Nan::New("PQNative").ToLocalChecked(),
+//       Nan::GetFunction(tpl).ToLocalChecked()
+//     );
+//     // target->Set(Nan::New("PQ").ToLocalChecked(), tpl->GetFunction());
+// }
 
 
 Connection::~Connection() {
   printf("Connection::~Connection(); ID: %d\n", id);
+  // delete emitCallback;
 }
 
 NAN_METHOD(Connection::Create) {
   TRACE("Building new instance");
-  Connection* conn = new Connection();
+  v8::Local<v8::Function> cb = info[0].As<v8::Function>();
+  Connection* conn = new Connection(cb);
   conn->Wrap(info.This());
 
   info.GetReturnValue().Set(info.This());
@@ -80,10 +162,10 @@ NAN_METHOD(Connection::Finish) {
 
   PQfinish(self->pq);
   self->pq = NULL;
-  if(self->is_reffed) {
-    self->is_reffed = false;
-    self->Unref();
-  }
+  // if(self->is_reffed) {
+  //   self->is_reffed = false;
+  //   self->Unref();
+  // }
 
   if (self->poll_watcher != NULL) {
     int isActive = uv_is_active((uv_handle_t*) self->poll_watcher);
@@ -93,12 +175,23 @@ NAN_METHOD(Connection::Finish) {
     }
 
     uv_close(reinterpret_cast<uv_handle_t*> (self->poll_watcher), [](uv_handle_t* handle) {
+      int a = rand() % 1000;
+      printf("[libpq][Finish] uv_close callback, LocalID: %d\n", a);
       Connection *self = (Connection *)handle->data;
+      printf("[libpq][Finish] uv_close callback. LocalID: %d, ID: %d, IsDeleted: %d\n", a, self->id, self->poll_watcher == NULL);
       delete self->poll_watcher;
       self->poll_watcher = NULL;
+
+      if(self->is_reffed) {
+        self->is_reffed = false;
+        self->Unref();
+      }
     });
   } else {
-
+    if(self->is_reffed) {
+      self->is_reffed = false;
+      self->Unref();
+    }
   }
 }
 
@@ -829,23 +922,43 @@ void Connection::DeleteCStringArray(char** array, int length) {
 
 void Connection::Emit(const char* message) {
   Nan::HandleScope scope;
-
   TRACE("ABOUT TO EMIT EVENT");
-  v8::Local<v8::Object> jsInstance = handle();
-  TRACE("GETTING 'emit' FUNCTION INSTANCE");
-  v8::Local<v8::Value> emit_v = Nan::Get(jsInstance, Nan::New<v8::String>("emit").ToLocalChecked()).ToLocalChecked();
-  assert(emit_v->IsFunction());
-  v8::Local<v8::Function> emit_f = emit_v.As<v8::Function>();
 
   v8::Local<v8::String> eventName = Nan::New<v8::String>(message).ToLocalChecked();
   v8::Local<v8::Value> info[1] = { eventName };
 
   TRACE("CALLING EMIT");
   Nan::TryCatch tc;
+
   Nan::AsyncResource *async_emit_f = new Nan::AsyncResource("libpq:connection:emit");
-  async_emit_f->runInAsyncScope(jsInstance, emit_f, 1, info);
+  // async_emit_f->runInAsyncScope(jsInstance, emit_f, 1, info);
+  emitCallback.Call(1, info, async_emit_f);
   delete async_emit_f;
+
   if(tc.HasCaught()) {
     Nan::FatalException(tc);
   }
+
+
+
+  // Nan::HandleScope scope;
+  //
+  // TRACE("ABOUT TO EMIT EVENT");
+  // v8::Local<v8::Object> jsInstance = handle();
+  // TRACE("GETTING 'emit' FUNCTION INSTANCE");
+  // v8::Local<v8::Value> emit_v = Nan::Get(jsInstance, Nan::New<v8::String>("emit").ToLocalChecked()).ToLocalChecked();
+  // assert(emit_v->IsFunction());
+  // v8::Local<v8::Function> emit_f = emit_v.As<v8::Function>();
+  //
+  // v8::Local<v8::String> eventName = Nan::New<v8::String>(message).ToLocalChecked();
+  // v8::Local<v8::Value> info[1] = { eventName };
+  //
+  // TRACE("CALLING EMIT");
+  // Nan::TryCatch tc;
+  // Nan::AsyncResource *async_emit_f = new Nan::AsyncResource("libpq:connection:emit");
+  // async_emit_f->runInAsyncScope(jsInstance, emit_f, 1, info);
+  // delete async_emit_f;
+  // if(tc.HasCaught()) {
+  //   Nan::FatalException(tc);
+  // }
 }
