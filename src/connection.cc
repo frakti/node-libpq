@@ -8,6 +8,7 @@ Connection::Connection() : Nan::ObjectWrap() {
   is_reffed = false;
   is_success_poll_init = false;
   poll_watcher.data = this;
+  fd = -1;
 }
 
 NAN_METHOD(Connection::Create) {
@@ -69,27 +70,26 @@ NAN_METHOD(Connection::Finish) {
 
   Connection *self = NODE_THIS();
 
-  self->ReadStop();
+  if (self->is_success_poll_init) {
+    int fd = PQsocket(self->pq);
+
+    if (fd != self->fd) {
+      printf("[libpq][finish][error] Socket id has changed! Prev: %d, New: %d\n", self->fd, fd);
+    }
+
+    int pollStopStatus = uv_poll_stop(&(self->poll_watcher));
+    if (0 != pollStopStatus) {
+      printf("[libpq][finish][error] Failed to stop poll! Reason: %s\n", uv_strerror(pollStopStatus));
+    }
+    self->is_reading = false;
+  }
   self->ClearLastResult();
 
-  if (self->is_success_poll_init) {
-    uv_close(reinterpret_cast<uv_handle_t*> (&(self->poll_watcher)), [](uv_handle_t* handle) {
-      Connection *self = (Connection *)handle->data;
-
-      PQfinish(self->pq);
-      self->pq = NULL;
-      if(self->is_reffed) {
-        self->is_reffed = false;
-        self->Unref();
-      }
-    });
-  } else {
-    PQfinish(self->pq);
-    self->pq = NULL;
-    if (self->is_reffed) {
-      self->is_reffed = false;
-      self->Unref();
-    }
+  PQfinish(self->pq);
+  self->pq = NULL;
+  if(self->is_reffed) {
+    self->is_reffed = false;
+    self->Unref();
   }
 }
 
@@ -687,7 +687,7 @@ bool Connection::ConnectDB(const char* paramString) {
   }
 
   int fd = PQsocket(this->pq);
-
+  this->fd = fd;
   int socketInitStatus = uv_poll_init_socket(uv_default_loop(), &(this->poll_watcher), fd);
 
   if (socketInitStatus == 0) {
@@ -729,7 +729,10 @@ void Connection::on_io_writable(uv_poll_t* handle, int status, int revents) {
 void Connection::ReadStart() {
   LOG("Connection::ReadStart:starting read watcher");
   is_reading = true;
-  uv_poll_start(&poll_watcher, UV_READABLE, on_io_readable);
+  int pollStartStatus = uv_poll_start(&poll_watcher, UV_READABLE, on_io_readable);
+  if (pollStartStatus != 0) {
+    printf("[lippq][readStart][error] Non-zero ReadPoolStart status. Status: %s\n", uv_strerror(pollStartStatus));
+  }
   LOG("Connection::ReadStart:started read watcher");
 }
 
@@ -737,19 +740,28 @@ void Connection::ReadStop() {
   LOG("Connection::ReadStop:stoping read watcher");
   if(!is_reading) return;
   is_reading = false;
-  uv_poll_stop(&poll_watcher);
+  int pollStopStatus = uv_poll_stop(&poll_watcher);
+  if (pollStopStatus != 0) {
+    printf("[lippq][readStop][error] Non-zero ReadPoolStop status. Status: %s\n", uv_strerror(pollStopStatus));
+  }
   LOG("Connection::ReadStop:stopped read watcher");
 }
 
 void Connection::WriteStart() {
   LOG("Connection::WriteStart:starting write watcher");
-  uv_poll_start(&poll_watcher, UV_WRITABLE, on_io_writable);
+  int pollStartStatus = uv_poll_start(&poll_watcher, UV_WRITABLE, on_io_writable);
+  if (pollStartStatus != 0) {
+    printf("[lippq][writeStart][error] Non-zero WritePoolStart status. Status: %s\n", uv_strerror(pollStartStatus));
+  }
   LOG("Connection::WriteStart:started write watcher");
 }
 
 void Connection::WriteStop() {
   LOG("Connection::WriteStop:stoping write watcher");
-  uv_poll_stop(&poll_watcher);
+  int pollStopStatus = uv_poll_stop(&poll_watcher);
+  if (pollStopStatus != 0) {
+    printf("[lippq][writeStop][error] Non-zero WritePoolStop status. Status: %s\n", uv_strerror(pollStopStatus));
+  }
 }
 
 
