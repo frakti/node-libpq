@@ -77,10 +77,7 @@ NAN_METHOD(Connection::Finish) {
       printf("[libpq][finish][error] Socket id has changed! Prev: %d, New: %d\n", self->fd, fd);
     }
 
-    int pollStopStatus = uv_poll_stop(&(self->poll_watcher));
-    if (0 != pollStopStatus) {
-      printf("[libpq][finish][error] Failed to stop poll! Reason: %s\n", uv_strerror(pollStopStatus));
-    }
+    uv_close((uv_handle_t*) &self->poll_watcher, NULL);
     self->is_reading = false;
   }
   self->ClearLastResult();
@@ -89,8 +86,15 @@ NAN_METHOD(Connection::Finish) {
   self->pq = NULL;
   if(self->is_reffed) {
     self->is_reffed = false;
-    self->Unref();
   }
+}
+
+NAN_METHOD(Connection::MarkAsFinished) {
+  TRACE("Connection::Finish::finish");
+  Connection *self = NODE_THIS();
+  self->Unref();
+
+  printf("[libpq][MarkAsFinished] fired\n");
 }
 
 NAN_METHOD(Connection::ServerVersion) {

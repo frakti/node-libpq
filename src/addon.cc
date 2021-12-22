@@ -11,6 +11,8 @@ NAN_MODULE_INIT(InitAddon) {
   Nan::SetPrototypeMethod(tpl, "$connectSync", Connection::ConnectSync);
   Nan::SetPrototypeMethod(tpl, "$connect", Connection::Connect);
   Nan::SetPrototypeMethod(tpl, "$finish", Connection::Finish);
+  Nan::SetPrototypeMethod(tpl, "$markAsFinished", Connection::MarkAsFinished);
+
   Nan::SetPrototypeMethod(tpl, "$getLastErrorMessage", Connection::GetLastErrorMessage);
   Nan::SetPrototypeMethod(tpl, "$resultErrorFields", Connection::ResultErrorFields);
   Nan::SetPrototypeMethod(tpl, "$socket", Connection::Socket);

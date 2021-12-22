@@ -65,6 +65,7 @@ PQ.prototype.serverVersion = function () {
 PQ.prototype.finish = function() {
   this.connected = false;
   this.$finish();
+  setTimeout(() => this.$markAsFinished(), 0);
 };
 
 ////SYNC executes a plain text query

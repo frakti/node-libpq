@@ -13,6 +13,7 @@ class Connection : public Nan::ObjectWrap {
     static NAN_METHOD(Socket);
     static NAN_METHOD(GetLastErrorMessage);
     static NAN_METHOD(Finish);
+    static NAN_METHOD(MarkAsFinished);
     static NAN_METHOD(Exec);
     static NAN_METHOD(ExecParams);
     static NAN_METHOD(Prepare);
