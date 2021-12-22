@@ -825,19 +825,21 @@ void Connection::Emit(const char* message) {
   Nan::HandleScope scope;
 
   TRACE("ABOUT TO EMIT EVENT");
-  v8::Local<v8::Object> jsInstance = handle();
-  TRACE("GETTING 'emit' FUNCTION INSTANCE");
-  v8::Local<v8::Value> emit_v = Nan::Get(jsInstance, Nan::New<v8::String>("emit").ToLocalChecked()).ToLocalChecked();
-  assert(emit_v->IsFunction());
-  v8::Local<v8::Function> emit_f = emit_v.As<v8::Function>();
+  // v8::Local<v8::Object> jsInstance = handle();
+  // TRACE("GETTING 'emit' FUNCTION INSTANCE");
+  // v8::Local<v8::Value> emit_v = Nan::Get(jsInstance, Nan::New<v8::String>("emit").ToLocalChecked()).ToLocalChecked();
+  // assert(emit_v->IsFunction());
+  // v8::Local<v8::Function> emit_f = emit_v.As<v8::Function>();
 
-  v8::Local<v8::String> eventName = Nan::New<v8::String>(message).ToLocalChecked();
-  v8::Local<v8::Value> info[1] = { eventName };
+  // v8::Local<v8::String> eventName = ;
+  v8::Local<v8::Value> info[1] = {
+    Nan::New<v8::String>(message).ToLocalChecked()
+  };
 
   TRACE("CALLING EMIT");
   Nan::TryCatch tc;
   Nan::AsyncResource *async_emit_f = new Nan::AsyncResource("libpq:connection:emit");
-  async_emit_f->runInAsyncScope(jsInstance, emit_f, 1, info);
+  async_emit_f->runInAsyncScope(handle(), "emit", 1, info);
   delete async_emit_f;
   if(tc.HasCaught()) {
     Nan::FatalException(tc);
