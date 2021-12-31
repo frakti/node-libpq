@@ -1,57 +1,60 @@
-#ifndef NODE_LIBPQ_CONNECTION
-#define NODE_LIBPQ_CONNECTION
+#ifndef NODE_LIBPQ_CONNECTION_V2
+#define NODE_LIBPQ_CONNECTION_V2
 
-#include <nan.h>
+#include <napi.h>
 #include <libpq-fe.h>
 
-class Connection : public Nan::ObjectWrap {
+#define NAPI_METHOD(name)                                                       \
+    name(const Napi::CallbackInfo& info)
+
+class Connection : public Napi::ObjectWrap<Connection> {
   public:
-    static NAN_METHOD(Create);
-    static NAN_METHOD(ConnectSync);
-    static NAN_METHOD(Connect);
-    static NAN_METHOD(ServerVersion);
-    static NAN_METHOD(Socket);
-    static NAN_METHOD(GetLastErrorMessage);
-    static NAN_METHOD(Finish);
-    static NAN_METHOD(MarkAsFinished);
-    static NAN_METHOD(Exec);
-    static NAN_METHOD(ExecParams);
-    static NAN_METHOD(Prepare);
-    static NAN_METHOD(ExecPrepared);
-    static NAN_METHOD(Clear);
-    static NAN_METHOD(Ntuples);
-    static NAN_METHOD(Nfields);
-    static NAN_METHOD(Fname);
-    static NAN_METHOD(Ftype);
-    static NAN_METHOD(Getvalue);
-    static NAN_METHOD(Getisnull);
-    static NAN_METHOD(CmdStatus);
-    static NAN_METHOD(CmdTuples);
-    static NAN_METHOD(ResultStatus);
-    static NAN_METHOD(ResultErrorMessage);
-    static NAN_METHOD(ResultErrorFields);
-    static NAN_METHOD(SendQuery);
-    static NAN_METHOD(SendQueryParams);
-    static NAN_METHOD(SendPrepare);
-    static NAN_METHOD(SendQueryPrepared);
-    static NAN_METHOD(GetResult);
-    static NAN_METHOD(ConsumeInput);
-    static NAN_METHOD(IsBusy);
-    static NAN_METHOD(StartRead);
-    static NAN_METHOD(StopRead);
-    static NAN_METHOD(StartWrite);
-    static NAN_METHOD(SetNonBlocking);
-    static NAN_METHOD(IsNonBlocking);
-    static NAN_METHOD(Flush);
+    // static Napi::Value NAPI_METHOD(Create);
+    static Napi::Value NAPI_METHOD(ConnectSync); // Boolean
+    static void NAPI_METHOD(Connect);
+    static Napi::Value NAPI_METHOD(ServerVersion);
+    static Napi::Value NAPI_METHOD(Socket);
+    static Napi::Value NAPI_METHOD(GetLastErrorMessage);
+    static void NAPI_METHOD(Finish);
+    static void NAPI_METHOD(MarkAsFinished);
+    static void NAPI_METHOD(Exec);
+    static void NAPI_METHOD(ExecParams);
+    static void NAPI_METHOD(Prepare);
+    static void NAPI_METHOD(ExecPrepared);
+    static void NAPI_METHOD(Clear);
+    static Napi::Value NAPI_METHOD(Ntuples);
+    static Napi::Value NAPI_METHOD(Nfields);
+    static Napi::Value NAPI_METHOD(Fname); // string or null
+    static Napi::Value NAPI_METHOD(Ftype);
+    static Napi::Value NAPI_METHOD(Getvalue); // string or null
+    static Napi::Value NAPI_METHOD(Getisnull); // Boolean
+    static Napi::Value NAPI_METHOD(CmdStatus);
+    static Napi::Value NAPI_METHOD(CmdTuples);
+    static Napi::Value NAPI_METHOD(ResultStatus);
+    static Napi::Value NAPI_METHOD(ResultErrorMessage);
+    static Napi::Value NAPI_METHOD(ResultErrorFields); // object or null
+    static Napi::Value NAPI_METHOD(SendQuery); // Boolean
+    static Napi::Value NAPI_METHOD(SendQueryParams); // Boolean
+    static Napi::Value NAPI_METHOD(SendPrepare); // Boolean
+    static Napi::Value NAPI_METHOD(SendQueryPrepared); // Boolean
+    static Napi::Value NAPI_METHOD(GetResult); // Boolean
+    static Napi::Value NAPI_METHOD(ConsumeInput); // Boolean
+    static Napi::Value NAPI_METHOD(IsBusy); // Boolean
+    static void NAPI_METHOD(StartRead);
+    static void NAPI_METHOD(StopRead);
+    static void NAPI_METHOD(StartWrite);
+    static Napi::Value NAPI_METHOD(SetNonBlocking); // Boolean
+    static Napi::Value NAPI_METHOD(IsNonBlocking); // Boolean
+    static Napi::Value NAPI_METHOD(Flush);
 #ifdef ESCAPE_SUPPORTED
-    static NAN_METHOD(EscapeLiteral);
-    static NAN_METHOD(EscapeIdentifier);
+    static Napi::Value NAPI_METHOD(EscapeLiteral); // string or null
+    static Napi::Value NAPI_METHOD(EscapeIdentifier); // string or null
 #endif
-    static NAN_METHOD(Notifies);
-    static NAN_METHOD(PutCopyData);
-    static NAN_METHOD(PutCopyEnd);
-    static NAN_METHOD(GetCopyData);
-    static NAN_METHOD(Cancel);
+    static Napi::Value NAPI_METHOD(Notifies); // object or null
+    // static Napi::Value NAPI_METHOD(PutCopyData);
+    static Napi::Value NAPI_METHOD(PutCopyEnd);
+    // static Napi::Value NAPI_METHOD(GetCopyData); // TODO verify if return type is correct
+    // static NAPI_METHOD(Cancel);
 
     bool ConnectDB(const char* paramString);
     char* ErrorMessage();
@@ -65,7 +68,7 @@ class Connection : public Nan::ObjectWrap {
     bool is_success_poll_init;
     int fd;
 
-    Connection();
+    Connection(const Napi::CallbackInfo& info);
 
     static void on_io_readable(uv_poll_t* handle, int status, int revents);
     static void on_io_writable(uv_poll_t* handle, int status, int revents);
@@ -75,8 +78,8 @@ class Connection : public Nan::ObjectWrap {
     void WriteStop();
     void ClearLastResult();
     void SetLastResult(PGresult* result);
-    static char* NewCString(v8::Local<v8::Value> val);
-    static char** NewCStringArray(v8::Local<v8::Array> jsParams);
+    static char* NewCString(Napi::Env env, Napi::Value val);
+    static char** NewCStringArray(Napi::Env env, Napi::Array jsParams);
     static void DeleteCStringArray(char** array, int length);
     void Emit(const char* message);
 };

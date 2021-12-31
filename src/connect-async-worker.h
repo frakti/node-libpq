@@ -3,15 +3,16 @@
 
 #include "addon.h"
 
-class ConnectAsyncWorker : public Nan::AsyncWorker {
+class ConnectAsyncWorker : public Napi::AsyncWorker {
 public:
-  ConnectAsyncWorker(v8::Local<v8::String> paramString, Connection* conn, Nan::Callback* callback);
-  ~ConnectAsyncWorker();
+  ConnectAsyncWorker(const char* paramString, Connection* conn, Napi::Function& callback);
+  virtual ~ConnectAsyncWorker(){};
   void Execute();
+  void OnOK();
 
 private:
   Connection* conn;
-  Nan::Utf8String paramString;
+  const char* paramString;
 };
 
 #endif

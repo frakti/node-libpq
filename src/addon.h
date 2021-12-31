@@ -1,7 +1,8 @@
 #ifndef NODE_LIBPQ_ADDON
 #define NODE_LIBPQ_ADDON
 
-#include <nan.h>
+#include <uv.h>
+#include <napi.h>
 #include <libpq-fe.h>
 #include <pg_config.h>
 
@@ -23,6 +24,7 @@
 #define TRACEF(format, arg) ;
 
 #define TRACE(msg) LOG(msg);
-#define NODE_THIS() Nan::ObjectWrap::Unwrap<Connection>(info.This());
+#define NODE_THIS() Napi::ObjectWrap<Connection>::Unwrap(info.This().ToObject());
 
+// info.This().Value()
 #endif

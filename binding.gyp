@@ -22,7 +22,8 @@
       ],
       'include_dirs': [
         '<!@(<(pgconfig) --includedir)',
-        '<!(node -e "require(\'nan\')")'
+        '<!(node -e "require(\'nan\')")',
+        '<!(node -p "require(\'node-addon-api\').include_dir")'
       ],
       'conditions' : [
         ['OS=="linux"', {
@@ -36,7 +37,13 @@
         }],
         ['OS=="win"', {
           'libraries' : ['ws2_32.lib','secur32.lib','crypt32.lib','wsock32.lib','msvcrt.lib','libpq.lib'],
+          'defines': [
+            '_HAS_EXCEPTIONS=1'
+          ],
           'msvs_settings': {
+            'VCCLCompilerTool': {
+              'ExceptionHandling': 1
+            },
             'VCLinkerTool' : {
               'AdditionalLibraryDirectories' : [
                 '<!@(<(pgconfig) --libdir)\\'
@@ -49,6 +56,7 @@
         }],
         ['OS=="mac"', {
           'xcode_settings': {
+            'GCC_ENABLE_CPP_EXCEPTIONS': 'YES',
             'CLANG_CXX_LIBRARY': 'libc++',
             'MACOSX_DEPLOYMENT_TARGET': '10.7',
             'OTHER_CFLAGS': [

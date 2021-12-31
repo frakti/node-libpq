@@ -1,6 +1,6 @@
 #include "addon.h"
 
-Connection::Connection() : Nan::ObjectWrap() {
+Connection::Connection(const Napi::CallbackInfo& info) : Napi::ObjectWrap<Connection>(info) {
   TRACE("Connection::Constructor");
   pq = NULL;
   lastResult = NULL;
@@ -11,61 +11,58 @@ Connection::Connection() : Nan::ObjectWrap() {
   fd = -1;
 }
 
-NAN_METHOD(Connection::Create) {
-  TRACE("Building new instance");
-  Connection* conn = new Connection();
-  conn->Wrap(info.This());
+// Napi::Value NAPI_METHOD(Connection::Create) {
+//   TRACE("Building new instance");
+//   Connection* conn = new Connection();
+//   conn->Wrap(info.This());
+//
+//   info.GetReturnValue().Set(info.This());
+// }
 
-  info.GetReturnValue().Set(info.This());
-}
-
-NAN_METHOD(Connection::ConnectSync) {
+Napi::Value NAPI_METHOD(Connection::ConnectSync) {
   TRACE("Connection::ConnectSync::begin");
 
-  Connection *self = Nan::ObjectWrap::Unwrap<Connection>(info.This());
+  Connection* self = NODE_THIS();
 
   self->Ref();
   self->is_reffed = true;
-  bool success = self->ConnectDB(*Nan::Utf8String(info[0]));
+  bool success = self->ConnectDB(info[0].As<Napi::String>().Utf8Value().c_str());
 
-  info.GetReturnValue().Set(success);
+  return Napi::Boolean::New(info.Env(), success);
 }
 
-NAN_METHOD(Connection::Connect) {
+void NAPI_METHOD(Connection::Connect) {
   TRACE("Connection::Connect");
 
   Connection* self = NODE_THIS();
 
-  v8::Local<v8::Function> callback = info[1].As<v8::Function>();
-  LOG("About to make callback");
-  Nan::Callback* nanCallback = new Nan::Callback(callback);
+  Napi::Function callback = info[1].As<Napi::Function>()
   LOG("About to instantiate worker");
-  ConnectAsyncWorker* worker = new ConnectAsyncWorker(info[0].As<v8::String>(), self, nanCallback);
+  ConnectAsyncWorker* worker = new ConnectAsyncWorker(info[0].As<Napi::String>().Utf8Value().c_str(), self, callback);
   LOG("Instantiated worker, running it...");
   self->Ref();
   self->is_reffed = true;
-  worker->SaveToPersistent(Nan::New("PQConnectAsyncWorker").ToLocalChecked(), info.This());
-  Nan::AsyncQueueWorker(worker);
+  worker->Queue();
 }
 
-NAN_METHOD(Connection::Socket) {
+Napi::Value NAPI_METHOD(Connection::Socket) {
   TRACE("Connection::Socket");
 
   Connection *self = NODE_THIS();
   int fd = PQsocket(self->pq);
   TRACEF("Connection::Socket::fd: %d\n", fd);
 
-  info.GetReturnValue().Set(fd);
+  return Napi::Number::New(info.Env(), fd);
 }
 
-NAN_METHOD(Connection::GetLastErrorMessage) {
+Napi::Value NAPI_METHOD(Connection::GetLastErrorMessage) {
   Connection *self = NODE_THIS();
   char* errorMessage = PQerrorMessage(self->pq);
 
-  info.GetReturnValue().Set(Nan::New(errorMessage).ToLocalChecked());
+  return Napi::String::New(info.Env(), errorMessage);
 }
 
-NAN_METHOD(Connection::Finish) {
+void NAPI_METHOD(Connection::Finish) {
   TRACE("Connection::Finish::finish");
 
   Connection *self = NODE_THIS();
@@ -89,7 +86,7 @@ NAN_METHOD(Connection::Finish) {
   }
 }
 
-NAN_METHOD(Connection::MarkAsFinished) {
+void NAPI_METHOD(Connection::MarkAsFinished) {
   TRACE("Connection::Finish::finish");
   Connection *self = NODE_THIS();
   self->Unref();
@@ -97,37 +94,36 @@ NAN_METHOD(Connection::MarkAsFinished) {
   printf("[libpq][MarkAsFinished] fired\n");
 }
 
-NAN_METHOD(Connection::ServerVersion) {
+Napi::Value NAPI_METHOD(Connection::ServerVersion) {
   TRACE("Connection::ServerVersion");
   Connection* self = NODE_THIS();
-  info.GetReturnValue().Set(PQserverVersion(self->pq));
+  return Napi::Number::New(info.Env(), PQserverVersion(self->pq));
 }
 
-
-NAN_METHOD(Connection::Exec) {
+void NAPI_METHOD(Connection::Exec) {
   Connection *self = NODE_THIS();
-  Nan::Utf8String commandText(info[0]);
+  std::string commandText = info[0].As<Napi::String>().Utf8Value();
 
-  TRACEF("Connection::Exec: %s\n", *commandText);
-  PGresult* result = PQexec(self->pq, *commandText);
+  TRACEF("Connection::Exec: %s\n", commandText);
+  PGresult* result = PQexec(self->pq, commandText.c_str());
 
   self->SetLastResult(result);
 }
 
-NAN_METHOD(Connection::ExecParams) {
+void NAPI_METHOD(Connection::ExecParams) {
   Connection *self = NODE_THIS();
 
-  Nan::Utf8String commandText(info[0]);
-  TRACEF("Connection::Exec: %s\n", *commandText);
+  std::string commandText = info[0].As<Napi::String>().Utf8Value();
+  TRACEF("Connection::Exec: %s\n", commandText);
 
-  v8::Local<v8::Array> jsParams = v8::Local<v8::Array>::Cast(info[1]);
+  Napi::Array jsParams = info[1].As<Napi::Array>();
 
-  int numberOfParams = jsParams->Length();
-  char **parameters = NewCStringArray(jsParams);
+  int numberOfParams = jsParams.Length();
+  char **parameters = NewCStringArray(info.Env(), jsParams);
 
   PGresult* result = PQexecParams(
       self->pq,
-      *commandText,
+      commandText.c_str(),
       numberOfParams,
       NULL, //const Oid* paramTypes[],
       parameters, //const char* const* paramValues[]
@@ -141,19 +137,19 @@ NAN_METHOD(Connection::ExecParams) {
   self->SetLastResult(result);
 }
 
-NAN_METHOD(Connection::Prepare) {
+void NAPI_METHOD(Connection::Prepare) {
   Connection *self = NODE_THIS();
 
-  Nan::Utf8String statementName(info[0]);
-  Nan::Utf8String commandText(info[1]);
-  int numberOfParams = Nan::To<int>(info[2]).FromJust();
+  std::string statementName = info[0].As<Napi::String>().Utf8Value();
+  std::string commandText = info[1].As<Napi::String>().Utf8Value();
+  int numberOfParams = info[2].As<Napi::Number>().Int32Value();
 
   TRACEF("Connection::Prepare: %s\n", *statementName);
 
   PGresult* result = PQprepare(
       self->pq,
-      *statementName,
-      *commandText,
+      statementName.c_str(),
+      commandText.c_str(),
       numberOfParams,
       NULL //const Oid* paramTypes[]
       );
@@ -161,21 +157,21 @@ NAN_METHOD(Connection::Prepare) {
   self->SetLastResult(result);
 }
 
-NAN_METHOD(Connection::ExecPrepared) {
+void NAPI_METHOD(Connection::ExecPrepared) {
   Connection *self = NODE_THIS();
 
-  Nan::Utf8String statementName(info[0]);
+  std::string statementName = info[0].As<Napi::String>().Utf8Value();
 
   TRACEF("Connection::ExecPrepared: %s\n", *statementName);
 
-  v8::Local<v8::Array> jsParams = v8::Local<v8::Array>::Cast(info[1]);
+  Napi::Array jsParams = info[1].As<Napi::Array>();
 
-  int numberOfParams = jsParams->Length();
-  char** parameters = NewCStringArray(jsParams);
+  int numberOfParams = jsParams.Length();
+  char** parameters = NewCStringArray(info.Env(), jsParams);
 
   PGresult* result = PQexecPrepared(
       self->pq,
-      *statementName,
+      statementName.c_str(),
       numberOfParams,
       parameters, //const char* const* paramValues[]
       NULL, //const int* paramLengths[]
@@ -189,110 +185,110 @@ NAN_METHOD(Connection::ExecPrepared) {
 }
 
 
-NAN_METHOD(Connection::Clear) {
+void NAPI_METHOD(Connection::Clear) {
   TRACE("Connection::Clear");
   Connection *self = NODE_THIS();
 
   self->ClearLastResult();
 }
 
-NAN_METHOD(Connection::Ntuples) {
+Napi::Value NAPI_METHOD(Connection::Ntuples) {
   TRACE("Connection::Ntuples");
   Connection *self = NODE_THIS();
   PGresult* res = self->lastResult;
   int numTuples = PQntuples(res);
 
-  info.GetReturnValue().Set(numTuples);
+  return Napi::Number::New(info.Env(), numTuples);
 }
 
-NAN_METHOD(Connection::Nfields) {
+Napi::Value NAPI_METHOD(Connection::Nfields) {
   TRACE("Connection::Nfields");
   Connection *self = NODE_THIS();
   PGresult* res = self->lastResult;
   int numFields = PQnfields(res);
 
-  info.GetReturnValue().Set(numFields);
+  return Napi::Number::New(info.Env(), numFields);
 }
 
-NAN_METHOD(Connection::Fname) {
+Napi::Value NAPI_METHOD(Connection::Fname) {
   TRACE("Connection::Fname");
   Connection *self = NODE_THIS();
 
   PGresult* res = self->lastResult;
 
-  char* colName = PQfname(res, Nan::To<int32_t>(info[0]).FromJust());
+  char* colName = PQfname(res, info[0].As<Napi::Number>().Int32Value());
 
   if(colName == NULL) {
-    return info.GetReturnValue().SetNull();
+    return info.Env().Null();
   }
 
-  info.GetReturnValue().Set(Nan::New<v8::String>(colName).ToLocalChecked());
+  return Napi::String::New(info.Env(), colName);
 }
 
-NAN_METHOD(Connection::Ftype) {
+Napi::Value NAPI_METHOD(Connection::Ftype) {
   TRACE("Connection::Ftype");
   Connection *self = NODE_THIS();
 
   PGresult* res = self->lastResult;
 
-  int colName = PQftype(res, Nan::To<int32_t>(info[0]).FromJust());
+  int colType = PQftype(res, info[0].As<Napi::Number>().Int32Value());
 
-  info.GetReturnValue().Set(colName);
+  return Napi::Number::New(info.Env(), colType);
 }
 
-NAN_METHOD(Connection::Getvalue) {
+Napi::Value NAPI_METHOD(Connection::Getvalue) {
   TRACE("Connection::Getvalue");
   Connection *self = NODE_THIS();
 
   PGresult* res = self->lastResult;
 
-  int rowNumber = Nan::To<int32_t>(info[0]).FromJust();
-  int colNumber = Nan::To<int32_t>(info[1]).FromJust();
+  int rowNumber = info[0].As<Napi::Number>().Int32Value();
+  int colNumber = info[1].As<Napi::Number>().Int32Value();
 
   char* rowValue = PQgetvalue(res, rowNumber, colNumber);
 
   if(rowValue == NULL) {
-    return info.GetReturnValue().SetNull();
+    return info.Env().Null();
   }
 
-  info.GetReturnValue().Set(Nan::New(rowValue).ToLocalChecked());
+  return Napi::String::New(info.Env(), rowValue);
 }
 
-NAN_METHOD(Connection::Getisnull) {
+Napi::Value NAPI_METHOD(Connection::Getisnull) {
   TRACE("Connection::Getisnull");
   Connection *self = NODE_THIS();
 
   PGresult* res = self->lastResult;
 
-  int rowNumber = Nan::To<int32_t>(info[0]).FromJust();
-  int colNumber = Nan::To<int32_t>(info[1]).FromJust();
+  int rowNumber = info[0].As<Napi::Number>().Int32Value();
+  int colNumber = info[1].As<Napi::Number>().Int32Value();
 
   int rowValue = PQgetisnull(res, rowNumber, colNumber);
 
-  info.GetReturnValue().Set(rowValue == 1);
+  return Napi::Boolean::New(info.Env(), rowValue == 1);
 }
 
-NAN_METHOD(Connection::CmdStatus) {
+Napi::Value NAPI_METHOD(Connection::CmdStatus) {
   TRACE("Connection::CmdStatus");
   Connection *self = NODE_THIS();
 
   PGresult* res = self->lastResult;
   char* status = PQcmdStatus(res);
 
-  info.GetReturnValue().Set(Nan::New<v8::String>(status).ToLocalChecked());
+  return Napi::String::New(info.Env(), status);
 }
 
-NAN_METHOD(Connection::CmdTuples) {
+Napi::Value NAPI_METHOD(Connection::CmdTuples) {
   TRACE("Connection::CmdTuples");
   Connection *self = NODE_THIS();
 
   PGresult* res = self->lastResult;
   char* tuples = PQcmdTuples(res);
 
-  info.GetReturnValue().Set(Nan::New<v8::String>(tuples).ToLocalChecked());
+  return Napi::String::New(info.Env(), tuples);
 }
 
-NAN_METHOD(Connection::ResultStatus) {
+Napi::Value NAPI_METHOD(Connection::ResultStatus) {
   TRACE("Connection::ResultStatus");
   Connection *self = NODE_THIS();
 
@@ -300,35 +296,34 @@ NAN_METHOD(Connection::ResultStatus) {
 
   char* status = PQresStatus(PQresultStatus(res));
 
-  info.GetReturnValue().Set(Nan::New<v8::String>(status).ToLocalChecked());
+  return Napi::String::New(info.Env(), status);
 }
 
-NAN_METHOD(Connection::ResultErrorMessage) {
+Napi::Value NAPI_METHOD(Connection::ResultErrorMessage) {
   TRACE("Connection::ResultErrorMessage");
   Connection *self = NODE_THIS();
 
   PGresult* res = self->lastResult;
 
-  char* status = PQresultErrorMessage(res);
+  char* resultErrorMessage = PQresultErrorMessage(res);
 
-  info.GetReturnValue().Set(Nan::New<v8::String>(status).ToLocalChecked());
+  return Napi::String::New(info.Env(), resultErrorMessage);
 }
 
 # define SET_E(key, name) \
   field = PQresultErrorField(self->lastResult, key); \
   if(field != NULL) { \
-    Nan::Set(result, \
-        Nan::New(name).ToLocalChecked(), Nan::New(field).ToLocalChecked()); \
+    result.Set(name, field); \
   }
 
-NAN_METHOD(Connection::ResultErrorFields) {
+Napi::Value NAPI_METHOD(Connection::ResultErrorFields) {
   Connection *self = NODE_THIS();
 
   if(self->lastResult == NULL) {
-    return info.GetReturnValue().SetNull();
+    return info.Env().Null();
   }
 
-  v8::Local<v8::Object> result = Nan::New<v8::Object>();
+  Napi::Object result = Napi::Object::New(info.Env());
   char* field;
   SET_E(PG_DIAG_SEVERITY, "severity");
   SET_E(PG_DIAG_SQLSTATE, "sqlState");
@@ -349,37 +344,38 @@ NAN_METHOD(Connection::ResultErrorFields) {
   SET_E(PG_DIAG_SOURCE_FILE, "sourceFile");
   SET_E(PG_DIAG_SOURCE_LINE, "sourceLine");
   SET_E(PG_DIAG_SOURCE_FUNCTION, "sourceFunction");
-  info.GetReturnValue().Set(result);
+
+  return result;
 }
 
-NAN_METHOD(Connection::SendQuery) {
+Napi::Value NAPI_METHOD(Connection::SendQuery) {
   TRACE("Connection::SendQuery");
 
   Connection *self = NODE_THIS();
-  Nan::Utf8String commandText(info[0]);
+  std::string commandText = info[0].As<Napi::String>().Utf8Value();
 
-  TRACEF("Connection::SendQuery: %s\n", *commandText);
-  int success = PQsendQuery(self->pq, *commandText);
+  TRACEF("Connection::SendQuery: %s\n", commandText); // TODO test this
+  int success = PQsendQuery(self->pq, commandText.c_str());
 
-  info.GetReturnValue().Set(success == 1);
+  return Napi::Boolean::New(info.Env(), success == 1);
 }
 
-NAN_METHOD(Connection::SendQueryParams) {
+Napi::Value NAPI_METHOD(Connection::SendQueryParams) {
   TRACE("Connection::SendQueryParams");
 
   Connection *self = NODE_THIS();
 
-  Nan::Utf8String commandText(info[0]);
-  TRACEF("Connection::SendQueryParams: %s\n", *commandText);
+  std::string commandText = info[0].As<Napi::String>().Utf8Value();
+  TRACEF("Connection::SendQueryParams: %s\n", commandText);
 
-  v8::Local<v8::Array> jsParams = v8::Local<v8::Array>::Cast(info[1]);
+  Napi::Array jsParams = info[1].As<Napi::Array>();
 
-  int numberOfParams = jsParams->Length();
-  char** parameters = NewCStringArray(jsParams);
+  int numberOfParams = jsParams.Length();
+  char** parameters = NewCStringArray(info.Env(), jsParams);
 
   int success = PQsendQueryParams(
       self->pq,
-      *commandText,
+      commandText.c_str(),
       numberOfParams,
       NULL, //const Oid* paramTypes[],
       parameters, //const char* const* paramValues[]
@@ -390,46 +386,46 @@ NAN_METHOD(Connection::SendQueryParams) {
 
   DeleteCStringArray(parameters, numberOfParams);
 
-  info.GetReturnValue().Set(success == 1);
+  return Napi::Boolean::New(info.Env(), success == 1);
 }
 
-NAN_METHOD(Connection::SendPrepare) {
+Napi::Value NAPI_METHOD(Connection::SendPrepare) {
   TRACE("Connection::SendPrepare");
 
   Connection *self = NODE_THIS();
 
-  Nan::Utf8String statementName(info[0]);
-  Nan::Utf8String commandText(info[1]);
-  int numberOfParams = Nan::To<int>(info[2]).FromJust();
+  std::string statementName = info[0].As<Napi::String>().Utf8Value();
+  std::string commandText = info[1].As<Napi::String>().Utf8Value();
+  int numberOfParams = info[2].As<Napi::Number>().Int32Value();
 
-  TRACEF("Connection::SendPrepare: %s\n", *statementName);
+  TRACEF("Connection::SendPrepare: %s\n", statementName);
   int success = PQsendPrepare(
       self->pq,
-      *statementName,
-      *commandText,
+      statementName.c_str(),
+      commandText.c_str(),
       numberOfParams,
       NULL //const Oid* paramTypes
       );
 
-  info.GetReturnValue().Set(success == 1);
+  return Napi::Boolean::New(info.Env(), success == 1);
 }
 
-NAN_METHOD(Connection::SendQueryPrepared) {
+Napi::Value NAPI_METHOD(Connection::SendQueryPrepared) {
   TRACE("Connection::SendQueryPrepared");
 
   Connection *self = NODE_THIS();
 
-  Nan::Utf8String statementName(info[0]);
-  TRACEF("Connection::SendQueryPrepared: %s\n", *statementName);
+  std::string statementName = info[0].As<Napi::String>().Utf8Value();
+  TRACEF("Connection::SendQueryPrepared: %s\n", statementName);
 
-  v8::Local<v8::Array> jsParams = v8::Local<v8::Array>::Cast(info[1]);
+  Napi::Array jsParams = info[1].As<Napi::Array>();
 
-  int numberOfParams = jsParams->Length();
-  char** parameters = NewCStringArray(jsParams);
+  int numberOfParams = jsParams.Length();
+  char** parameters = NewCStringArray(info.Env(), jsParams);
 
   int success = PQsendQueryPrepared(
       self->pq,
-      *statementName,
+      statementName.c_str(),
       numberOfParams,
       parameters, //const char* const* paramValues[]
       NULL, //const int* paramLengths[]
@@ -439,33 +435,33 @@ NAN_METHOD(Connection::SendQueryPrepared) {
 
   DeleteCStringArray(parameters, numberOfParams);
 
-  info.GetReturnValue().Set(success == 1);
+  return Napi::Boolean::New(info.Env(), success == 1);
 }
 
-NAN_METHOD(Connection::GetResult) {
+Napi::Value NAPI_METHOD(Connection::GetResult) {
   TRACE("Connection::GetResult");
 
   Connection *self = NODE_THIS();
   PGresult *result = PQgetResult(self->pq);
 
   if(result == NULL) {
-    return info.GetReturnValue().Set(false);
+    return Napi::Boolean::New(info.Env(), false);
   }
 
   self->SetLastResult(result);
-  info.GetReturnValue().Set(true);
+  return Napi::Boolean::New(info.Env(), true);
 }
 
-NAN_METHOD(Connection::ConsumeInput) {
+Napi::Value NAPI_METHOD(Connection::ConsumeInput) {
   TRACE("Connection::ConsumeInput");
 
   Connection *self = NODE_THIS();
 
   int success = PQconsumeInput(self->pq);
-  info.GetReturnValue().Set(success == 1);
+  return Napi::Boolean::New(info.Env(), success == 1);
 }
 
-NAN_METHOD(Connection::IsBusy) {
+Napi::Value NAPI_METHOD(Connection::IsBusy) {
   TRACE("Connection::IsBusy");
 
   Connection *self = NODE_THIS();
@@ -473,10 +469,10 @@ NAN_METHOD(Connection::IsBusy) {
   int isBusy = PQisBusy(self->pq);
   TRACEF("Connection::IsBusy: %d\n", isBusy);
 
-  info.GetReturnValue().Set(isBusy == 1);
+  return Napi::Boolean::New(info.Env(), isBusy == 1);
 }
 
-NAN_METHOD(Connection::StartRead) {
+void NAPI_METHOD(Connection::StartRead) {
   TRACE("Connection::StartRead");
 
   Connection* self = NODE_THIS();
@@ -484,7 +480,7 @@ NAN_METHOD(Connection::StartRead) {
   self->ReadStart();
 }
 
-NAN_METHOD(Connection::StopRead) {
+void NAPI_METHOD(Connection::StopRead) {
   TRACE("Connection::StopRead");
 
   Connection* self = NODE_THIS();
@@ -492,7 +488,7 @@ NAN_METHOD(Connection::StopRead) {
   self->ReadStop();
 }
 
-NAN_METHOD(Connection::StartWrite) {
+void NAPI_METHOD(Connection::StartWrite) {
   TRACE("Connection::StartWrite");
 
   Connection* self = NODE_THIS();
@@ -500,77 +496,79 @@ NAN_METHOD(Connection::StartWrite) {
   self->WriteStart();
 }
 
-NAN_METHOD(Connection::SetNonBlocking) {
+Napi::Value NAPI_METHOD(Connection::SetNonBlocking) {
   TRACE("Connection::SetNonBlocking");
 
   Connection* self = NODE_THIS();
 
-  int ok = PQsetnonblocking(self->pq, Nan::To<int>(info[0]).FromJust());
+  int ok = PQsetnonblocking(self->pq, info[0].As<Napi::Number>().Int32Value());
 
-  info.GetReturnValue().Set(ok == 0);
+  return Napi::Boolean::New(info.Env(), ok == 1);
 }
 
-NAN_METHOD(Connection::IsNonBlocking) {
+Napi::Value NAPI_METHOD(Connection::IsNonBlocking) {
   TRACE("Connection::IsNonBlocking");
 
   Connection* self = NODE_THIS();
 
   int status = PQisnonblocking(self->pq);
 
-  info.GetReturnValue().Set(status == 1);
+  return Napi::Boolean::New(info.Env(), status == 1);
 }
 
-NAN_METHOD(Connection::Flush) {
+Napi::Value NAPI_METHOD(Connection::Flush) {
   TRACE("Connection::Flush");
 
   Connection* self = NODE_THIS();
 
   int status = PQflush(self->pq);
 
-  info.GetReturnValue().Set(status);
+  return Napi::Number::New(info.Env(), status);
 }
 
 #ifdef ESCAPE_SUPPORTED
-NAN_METHOD(Connection::EscapeLiteral) {
+Napi::Value NAPI_METHOD(Connection::EscapeLiteral) {
   TRACE("Connection::EscapeLiteral");
 
   Connection* self = NODE_THIS();
 
-  Nan::Utf8String str(Nan::To<v8::String>(info[0]).ToLocalChecked());
+  std::string str = info[0].As<Napi::String>().Utf8Value();
 
-  TRACEF("Connection::EscapeLiteral:input %s\n", *str);
-  char* result = PQescapeLiteral(self->pq, *str, str.length());
+  TRACEF("Connection::EscapeLiteral:input %s\n", str);
+  char* result = PQescapeLiteral(self->pq, str.c_str(), str.length());
   TRACEF("Connection::EscapeLiteral:output %s\n", result);
 
   if(result == NULL) {
-    return info.GetReturnValue().SetNull();
+    return info.Env().Null();
   }
 
-  info.GetReturnValue().Set(Nan::New(result).ToLocalChecked());
+  Napi::String returnedResult = Napi::String::New(info.Env(), result);
   PQfreemem(result);
+  return returnedResult;
 }
 
-NAN_METHOD(Connection::EscapeIdentifier) {
+Napi::Value NAPI_METHOD(Connection::EscapeIdentifier) {
   TRACE("Connection::EscapeIdentifier");
 
   Connection* self = NODE_THIS();
 
-  Nan::Utf8String str(Nan::To<v8::String>(info[0]).ToLocalChecked());
+  std::string str = info[0].As<Napi::String>();
 
-  TRACEF("Connection::EscapeIdentifier:input %s\n", *str);
-  char* result = PQescapeIdentifier(self->pq, *str, str.length());
+  TRACEF("Connection::EscapeIdentifier:input %s\n", str.c_str());
+  char* result = PQescapeIdentifier(self->pq, str.c_str(), str.length());
   TRACEF("Connection::EscapeIdentifier:output %s\n", result);
 
   if(result == NULL) {
-    return info.GetReturnValue().SetNull();
+    return info.Env().Null();
   }
 
-  info.GetReturnValue().Set(Nan::New(result).ToLocalChecked());
+  Napi::String returnedResult = Napi::String::New(info.Env(), result);
   PQfreemem(result);
+  return returnedResult;
 }
 #endif
 
-NAN_METHOD(Connection::Notifies) {
+Napi::Value NAPI_METHOD(Connection::Notifies) {
   LOG("Connection::Notifies");
 
   Connection* self = NODE_THIS();
@@ -579,35 +577,35 @@ NAN_METHOD(Connection::Notifies) {
 
   if(msg == NULL) {
     LOG("No notification");
-    return;
+    return info.Env().Null();
   }
 
-  v8::Local<v8::Object> result = Nan::New<v8::Object>();
-  Nan::Set(result, Nan::New("relname").ToLocalChecked(), Nan::New(msg->relname).ToLocalChecked());
-  Nan::Set(result, Nan::New("extra").ToLocalChecked(), Nan::New(msg->extra).ToLocalChecked());
-  Nan::Set(result, Nan::New("be_pid").ToLocalChecked(), Nan::New(msg->be_pid));
+  Napi::Object result = Napi::Object::New(info.Env());
+  result.Set("relname", msg->relname);
+  result.Set("extra", msg->extra);
+  result.Set("be_pid", msg->be_pid);
 
   PQfreemem(msg);
 
-  info.GetReturnValue().Set(result);
+  return result;
 };
 
-NAN_METHOD(Connection::PutCopyData) {
-  LOG("Connection::PutCopyData");
+// Napi::Value NAPI_METHOD(Connection::PutCopyData) {
+//   LOG("Connection::PutCopyData");
+//
+//   Connection* self = NODE_THIS();
+//
+//   Napi::Buffer<char> buffer = info[0].As<Napi::Buffer<char>>(); /// TODO SPECIFY <T>
+//
+//   char* data = node::Buffer::Data(buffer);
+//   int length = node::Buffer::Length(buffer);
+//
+//   int result = PQputCopyData(self->pq, data, length);
+//
+//   return Napi::Number::New(info.Env(), result);
+// }
 
-  Connection* self = NODE_THIS();
-
-  v8::Local<v8::Object> buffer = info[0].As<v8::Object>();
-
-  char* data = node::Buffer::Data(buffer);
-  int length = node::Buffer::Length(buffer);
-
-  int result = PQputCopyData(self->pq, data, length);
-
-  info.GetReturnValue().Set(result);
-}
-
-NAN_METHOD(Connection::PutCopyEnd) {
+Napi::Value NAPI_METHOD(Connection::PutCopyEnd) {
   LOG("Connection::PutCopyEnd");
 
   Connection* self = NODE_THIS();
@@ -617,68 +615,72 @@ NAN_METHOD(Connection::PutCopyEnd) {
   bool sendErrorMessage = info.Length() > 0;
   int result;
   if(sendErrorMessage) {
-    Nan::Utf8String msg(info[0]);
-    TRACEF("Connection::PutCopyEnd:%s\n", *msg);
-    result = PQputCopyEnd(self->pq, *msg);
+    std::string msg = info[0].As<Napi::String>();
+    TRACEF("Connection::PutCopyEnd:%s\n", msg);
+    result = PQputCopyEnd(self->pq, msg.c_str());
   } else {
     result = PQputCopyEnd(self->pq, NULL);
   }
 
-  info.GetReturnValue().Set(result);
+  return Napi::Number::New(info.Env(), result);
 }
 
 static void FreeBuffer(char *buffer, void *) {
   PQfreemem(buffer);
 }
 
-NAN_METHOD(Connection::GetCopyData) {
-  LOG("Connection::GetCopyData");
+// TEMPORARLY COMMENTED OUT TO VERIFY IF SEGFAULT IS GONE, ONCE CONFIRMED THAT WILL REVWIRTE THOSE METHODS TO NAPI
 
-  Connection* self = NODE_THIS();
+// Napi::Value NAPI_METHOD(Connection::GetCopyData) {
+//   LOG("Connection::GetCopyData");
+//
+//   Connection* self = NODE_THIS();
+//
+//   char* buffer = NULL;
+//   int async = info[0]->IsTrue() ? 1 : 0; // TODO check if this works
+//
+//   TRACEF("Connection::GetCopyData:async %d\n", async);
+//
+//   int length = PQgetCopyData(self->pq, &buffer, async);
+//
+//   //some sort of failure or not-ready condition
+//   if(length < 1) {
+//     return Napi::Number::New(info.Env(), length);
+//   }
+//
+//   return Napi::Buffer::New(info.Env(), buffer, length, FreeBuffer, NULL);
+// }
 
-  char* buffer = NULL;
-  int async = info[0]->IsTrue() ? 1 : 0;
+// Napi::Value NAPI_METHOD(Connection::Cancel) { ////////// TODO
+//   LOG("Connection::Cancel");
+//
+//   Connection* self = NODE_THIS();
+//
+//   PGcancel *cancelStuct = PQgetCancel(self->pq);
+//
+//   if(cancelStuct == NULL) {
+// Napi::Error::New(env, uv_strerror(status)).Value()
 
-  TRACEF("Connection::GetCopyData:async %d\n", async);
-
-  int length = PQgetCopyData(self->pq, &buffer, async);
-
-  //some sort of failure or not-ready condition
-  if(length < 1) {
-    return info.GetReturnValue().Set(length);
-  }
-
-  info.GetReturnValue().Set(Nan::NewBuffer(buffer, length, FreeBuffer, NULL).ToLocalChecked());
-}
-
-NAN_METHOD(Connection::Cancel) {
-  LOG("Connection::Cancel");
-
-  Connection* self = NODE_THIS();
-
-  PGcancel *cancelStuct = PQgetCancel(self->pq);
-
-  if(cancelStuct == NULL) {
-    info.GetReturnValue().Set(Nan::Error("Unable to allocate cancel struct"));
-    return;
-  }
-
-  char* errBuff = new char[255];
-
-  LOG("PQcancel");
-  int result = PQcancel(cancelStuct, errBuff, 255);
-
-  LOG("PQfreeCancel");
-  PQfreeCancel(cancelStuct);
-
-  if(result == 1) {
-    delete[] errBuff;
-    return info.GetReturnValue().Set(true);
-  }
-
-  info.GetReturnValue().Set(Nan::New(errBuff).ToLocalChecked());
-  delete[] errBuff;
-}
+//     info.GetReturnValue().Set(Nan::Error("Unable to allocate cancel struct"));
+//     return;
+//   }
+//
+//   char* errBuff = new char[255];
+//
+//   LOG("PQcancel");
+//   int result = PQcancel(cancelStuct, errBuff, 255);
+//
+//   LOG("PQfreeCancel");
+//   PQfreeCancel(cancelStuct);
+//
+//   if(result == 1) {
+//     delete[] errBuff;
+//     return info.GetReturnValue().Set(true);
+//   }
+//
+//   info.GetReturnValue().Set(Nan::New(errBuff).ToLocalChecked());
+//   delete[] errBuff;
+// }
 
 bool Connection::ConnectDB(const char* paramString) {
   TRACEF("Connection::ConnectDB:Connection parameters: %s\n", paramString);
@@ -782,33 +784,34 @@ void Connection::SetLastResult(PGresult* result) {
   lastResult = result;
 }
 
-char* Connection::NewCString(v8::Local<v8::Value> val) {
-  Nan::HandleScope scope;
+char* Connection::NewCString(Napi::Env env, Napi::Value val) {
+  Napi::HandleScope scope(env);
 
-  Nan::Utf8String str(val);
+  std::string str = val.As<Napi::String>();
   char* buffer = new char[str.length() + 1];
-  strcpy(buffer, *str);
+  strcpy(buffer, str.c_str());
 
   return buffer;
 }
 
-char** Connection::NewCStringArray(v8::Local<v8::Array> jsParams) {
-  Nan::HandleScope scope;
+char** Connection::NewCStringArray(Napi::Env env, Napi::Array jsParams) {
+  Napi::HandleScope scope(env);
 
-  int numberOfParams = jsParams->Length();
+  int numberOfParams = jsParams.Length();
 
   char** parameters = new char*[numberOfParams];
 
   for(int i = 0; i < numberOfParams; i++) {
-    v8::Local<v8::Value> val = Nan::Get(jsParams, i).ToLocalChecked();
-    if(val->IsNull()) {
+    Napi::Value val = jsParams[i];
+    // v8::Local<v8::Value> val = Nan::Get(jsParams, i).ToLocalChecked();
+    if(val.IsNull()) {
       parameters[i] = NULL;
       continue;
     }
     //expect every other value to be a string...
     //make sure aggresive type checking is done
     //on the JavaScript side before calling
-    parameters[i] = NewCString(val);
+    parameters[i] = NewCString(env, val);
   }
 
   return parameters;
@@ -822,9 +825,14 @@ void Connection::DeleteCStringArray(char** array, int length) {
 }
 
 void Connection::Emit(const char* message) {
-  Nan::HandleScope scope;
+  Napi::Env env = this->Env();
+  Napi::HandleScope scope(env);
 
   TRACE("ABOUT TO EMIT EVENT");
+  Napi::Function emit = this->Value().As<Napi::Object>().Get("emit").As<Napi::Function>();
+  emit.Call(this->Value(), { Napi::String::New(env, message) });
+
+
   // v8::Local<v8::Object> jsInstance = handle();
   // TRACE("GETTING 'emit' FUNCTION INSTANCE");
   // v8::Local<v8::Value> emit_v = Nan::Get(jsInstance, Nan::New<v8::String>("emit").ToLocalChecked()).ToLocalChecked();
@@ -832,16 +840,16 @@ void Connection::Emit(const char* message) {
   // v8::Local<v8::Function> emit_f = emit_v.As<v8::Function>();
 
   // v8::Local<v8::String> eventName = ;
-  v8::Local<v8::Value> info[1] = {
-    Nan::New<v8::String>(message).ToLocalChecked()
-  };
+  // v8::Local<v8::Value> info[1] = {
+  //   Nan::New<v8::String>(message).ToLocalChecked()
+  // };
 
-  TRACE("CALLING EMIT");
-  Nan::TryCatch tc;
-  Nan::AsyncResource *async_emit_f = new Nan::AsyncResource("libpq:connection:emit");
-  async_emit_f->runInAsyncScope(handle(), "emit", 1, info);
-  delete async_emit_f;
-  if(tc.HasCaught()) {
-    Nan::FatalException(tc);
-  }
+  // TRACE("CALLING EMIT");
+  // Nan::TryCatch tc;
+  // Nan::AsyncResource *async_emit_f = new Nan::AsyncResource("libpq:connection:emit");
+  // async_emit_f->runInAsyncScope(handle(), "emit", 1, info);
+  // delete async_emit_f;
+  // if(tc.HasCaught()) {
+  //   Nan::FatalException(tc);
+  // }
 }

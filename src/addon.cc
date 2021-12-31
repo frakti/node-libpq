@@ -1,78 +1,79 @@
 #include "addon.h"
 
 // Initialize the node addon
-NAN_MODULE_INIT(InitAddon) {
+Napi::Object InitAll(Napi::Env env, Napi::Object exports) {
+  Napi::Function func = DefineClass(env, "PQ", {
+    //connection initialization & management functions
+    Connection::InstanceMethod("$connectSync", &Connection::ConnectSync),
+    Connection::InstanceMethod("$connect", &Connection::Connect),
+    Connection::InstanceMethod("$finish", &Connection::Finish),
+    Connection::InstanceMethod("$markAsFinished", &Connection::MarkAsFinished),
 
-  v8::Local<v8::FunctionTemplate> tpl = Nan::New<v8::FunctionTemplate>(Connection::Create);
-  tpl->SetClassName(Nan::New("PQ").ToLocalChecked());
-  tpl->InstanceTemplate()->SetInternalFieldCount(1);
+    Connection::InstanceMethod("$getLastErrorMessage", &Connection::GetLastErrorMessage),
+    Connection::InstanceMethod("$resultErrorFields", &Connection::ResultErrorFields),
+    Connection::InstanceMethod("$socket", &Connection::Socket),
+    Connection::InstanceMethod("$serverVersion", &Connection::ServerVersion),
 
-  //connection initialization & management functions
-  Nan::SetPrototypeMethod(tpl, "$connectSync", Connection::ConnectSync);
-  Nan::SetPrototypeMethod(tpl, "$connect", Connection::Connect);
-  Nan::SetPrototypeMethod(tpl, "$finish", Connection::Finish);
-  Nan::SetPrototypeMethod(tpl, "$markAsFinished", Connection::MarkAsFinished);
+    //sync query functions
+    Connection::InstanceMethod("$exec", &Connection::Exec),
+    Connection::InstanceMethod("$execParams", &Connection::ExecParams),
+    Connection::InstanceMethod("$prepare", &Connection::Prepare),
+    Connection::InstanceMethod("$execPrepared", &Connection::ExecPrepared),
 
-  Nan::SetPrototypeMethod(tpl, "$getLastErrorMessage", Connection::GetLastErrorMessage);
-  Nan::SetPrototypeMethod(tpl, "$resultErrorFields", Connection::ResultErrorFields);
-  Nan::SetPrototypeMethod(tpl, "$socket", Connection::Socket);
-  Nan::SetPrototypeMethod(tpl, "$serverVersion", Connection::ServerVersion);
+    //async query functions
+    Connection::InstanceMethod("$sendQuery", &Connection::SendQuery),
+    Connection::InstanceMethod("$sendQueryParams", &Connection::SendQueryParams),
+    Connection::InstanceMethod("$sendPrepare", &Connection::SendPrepare),
+    Connection::InstanceMethod("$sendQueryPrepared", &Connection::SendQueryPrepared),
+    Connection::InstanceMethod("$getResult", &Connection::GetResult),
 
-  //sync query functions
-  Nan::SetPrototypeMethod(tpl, "$exec", Connection::Exec);
-  Nan::SetPrototypeMethod(tpl, "$execParams", Connection::ExecParams);
-  Nan::SetPrototypeMethod(tpl, "$prepare", Connection::Prepare);
-  Nan::SetPrototypeMethod(tpl, "$execPrepared", Connection::ExecPrepared);
+    //async i/o control functions
+    Connection::InstanceMethod("$startRead", &Connection::StartRead),
+    Connection::InstanceMethod("$stopRead", &Connection::StopRead),
+    Connection::InstanceMethod("$startWrite", &Connection::StartWrite),
+    Connection::InstanceMethod("$consumeInput", &Connection::ConsumeInput),
+    Connection::InstanceMethod("$isBusy", &Connection::IsBusy),
+    Connection::InstanceMethod("$setNonBlocking", &Connection::SetNonBlocking),
+    Connection::InstanceMethod("$isNonBlocking", &Connection::IsNonBlocking),
+    Connection::InstanceMethod("$flush", &Connection::Flush),
 
-  //async query functions
-  Nan::SetPrototypeMethod(tpl, "$sendQuery", Connection::SendQuery);
-  Nan::SetPrototypeMethod(tpl, "$sendQueryParams", Connection::SendQueryParams);
-  Nan::SetPrototypeMethod(tpl, "$sendPrepare", Connection::SendPrepare);
-  Nan::SetPrototypeMethod(tpl, "$sendQueryPrepared", Connection::SendQueryPrepared);
-  Nan::SetPrototypeMethod(tpl, "$getResult", Connection::GetResult);
+    //result accessor functions
+    Connection::InstanceMethod("$clear", &Connection::Clear),
+    Connection::InstanceMethod("$ntuples", &Connection::Ntuples),
+    Connection::InstanceMethod("$nfields", &Connection::Nfields),
+    Connection::InstanceMethod("$fname", &Connection::Fname),
+    Connection::InstanceMethod("$ftype", &Connection::Ftype),
+    Connection::InstanceMethod("$getvalue", &Connection::Getvalue),
+    Connection::InstanceMethod("$getisnull", &Connection::Getisnull),
+    Connection::InstanceMethod("$cmdStatus", &Connection::CmdStatus),
+    Connection::InstanceMethod("$cmdTuples", &Connection::CmdTuples),
+    Connection::InstanceMethod("$resultStatus", &Connection::ResultStatus),
+    Connection::InstanceMethod("$resultErrorMessage", &Connection::ResultErrorMessage),
 
-  //async i/o control functions
-  Nan::SetPrototypeMethod(tpl, "$startRead", Connection::StartRead);
-  Nan::SetPrototypeMethod(tpl, "$stopRead", Connection::StopRead);
-  Nan::SetPrototypeMethod(tpl, "$startWrite", Connection::StartWrite);
-  Nan::SetPrototypeMethod(tpl, "$consumeInput", Connection::ConsumeInput);
-  Nan::SetPrototypeMethod(tpl, "$isBusy", Connection::IsBusy);
-  Nan::SetPrototypeMethod(tpl, "$setNonBlocking", Connection::SetNonBlocking);
-  Nan::SetPrototypeMethod(tpl, "$isNonBlocking", Connection::IsNonBlocking);
-  Nan::SetPrototypeMethod(tpl, "$flush", Connection::Flush);
+    //string escaping functions
+  #ifdef ESCAPE_SUPPORTED
+    Connection::InstanceMethod("$escapeLiteral", &Connection::EscapeLiteral),
+    Connection::InstanceMethod("$escapeIdentifier", &Connection::EscapeIdentifier),
+  #endif
 
-  //result accessor functions
-  Nan::SetPrototypeMethod(tpl, "$clear", Connection::Clear);
-  Nan::SetPrototypeMethod(tpl, "$ntuples", Connection::Ntuples);
-  Nan::SetPrototypeMethod(tpl, "$nfields", Connection::Nfields);
-  Nan::SetPrototypeMethod(tpl, "$fname", Connection::Fname);
-  Nan::SetPrototypeMethod(tpl, "$ftype", Connection::Ftype);
-  Nan::SetPrototypeMethod(tpl, "$getvalue", Connection::Getvalue);
-  Nan::SetPrototypeMethod(tpl, "$getisnull", Connection::Getisnull);
-  Nan::SetPrototypeMethod(tpl, "$cmdStatus", Connection::CmdStatus);
-  Nan::SetPrototypeMethod(tpl, "$cmdTuples", Connection::CmdTuples);
-  Nan::SetPrototypeMethod(tpl, "$resultStatus", Connection::ResultStatus);
-  Nan::SetPrototypeMethod(tpl, "$resultErrorMessage", Connection::ResultErrorMessage);
+    //async notifications
+    Connection::InstanceMethod("$notifies", &Connection::Notifies),
 
-  //string escaping functions
-#ifdef ESCAPE_SUPPORTED
-  Nan::SetPrototypeMethod(tpl, "$escapeLiteral", Connection::EscapeLiteral);
-  Nan::SetPrototypeMethod(tpl, "$escapeIdentifier", Connection::EscapeIdentifier);
-#endif
+    //COPY IN/OUT
+    Connection::InstanceMethod("$putCopyData", &Connection::PutCopyData),
+    Connection::InstanceMethod("$putCopyEnd", &Connection::PutCopyEnd),
+    Connection::InstanceMethod("$getCopyData", &Connection::GetCopyData),
 
-  //async notifications
-  Nan::SetPrototypeMethod(tpl, "$notifies", Connection::Notifies);
+    //Cancel
+    Connection::InstanceMethod("$cancel", &Connection::Cancel)
+  });
 
-  //COPY IN/OUT
-  Nan::SetPrototypeMethod(tpl, "$putCopyData", Connection::PutCopyData);
-  Nan::SetPrototypeMethod(tpl, "$putCopyEnd", Connection::PutCopyEnd);
-  Nan::SetPrototypeMethod(tpl, "$getCopyData", Connection::GetCopyData);
+  Napi::FunctionReference* constructor = new Napi::FunctionReference();
+  *constructor = Napi::Persistent(func);
+  env.SetInstanceData(constructor);
 
-  //Cancel
-  Nan::SetPrototypeMethod(tpl, "$cancel", Connection::Cancel);
-
-  Nan::Set(target,
-      Nan::New("PQ").ToLocalChecked(), Nan::GetFunction(tpl).ToLocalChecked());
+  exports.Set("PQ", func);
+  return exports;
 }
 
-NODE_MODULE(addon, InitAddon)
+NODE_API_MODULE(addon, InitAll)
