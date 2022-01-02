@@ -22,9 +22,11 @@
       ],
       'include_dirs': [
         '<!@(<(pgconfig) --includedir)',
-        '<!(node -e "require(\'nan\')")',
         '<!(node -p "require(\'node-addon-api\').include_dir")'
       ],
+      'defines': ['NAPI_CPP_EXCEPTIONS'],
+      'cflags!': [ '-fno-exceptions' ],
+      'cflags_cc!': [ '-fno-exceptions' ],
       'conditions' : [
         ['OS=="linux"', {
             'cflags': [

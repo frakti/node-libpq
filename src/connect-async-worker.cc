@@ -1,7 +1,7 @@
 //helper class to perform async connection
 #include "addon.h"
 
-ConnectAsyncWorker::ConnectAsyncWorker(const char* paramString, Connection* conn, Napi::Function& callback)
+ConnectAsyncWorker::ConnectAsyncWorker(std::string paramString, Connection* conn, Napi::Function& callback)
   : Napi::AsyncWorker(callback), conn(conn), paramString(paramString) { }
 
   //this method fires within the threadpool and does not
@@ -9,7 +9,7 @@ ConnectAsyncWorker::ConnectAsyncWorker(const char* paramString, Connection* conn
   void ConnectAsyncWorker::Execute() {
     TRACE("ConnectAsyncWorker::Execute");
 
-    bool success = conn->ConnectDB(paramString);
+    bool success = conn->ConnectDB(paramString.c_str());
 
     if(!success) {
       SetError(conn->ErrorMessage());

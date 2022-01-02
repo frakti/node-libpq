@@ -5,14 +5,14 @@
 
 class ConnectAsyncWorker : public Napi::AsyncWorker {
 public:
-  ConnectAsyncWorker(const char* paramString, Connection* conn, Napi::Function& callback);
-  virtual ~ConnectAsyncWorker(){};
+  ConnectAsyncWorker(std::string paramString, Connection* conn, Napi::Function& callback);
+  virtual ~ConnectAsyncWorker() {};
   void Execute();
-  void OnOK();
+  // void OnOK();
 
 private:
   Connection* conn;
-  const char* paramString;
+  std::string paramString;
 };
 
 #endif

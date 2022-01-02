@@ -11,6 +11,83 @@ Connection::Connection(const Napi::CallbackInfo& info) : Napi::ObjectWrap<Connec
   fd = -1;
 }
 
+Napi::Object Connection::Init(Napi::Env env, Napi::Object exports) {
+  Napi::Function func = DefineClass(env, "PQ", {
+    //connection initialization & management functions
+    InstanceMethod<&Connection::ConnectSync>("$connectSync"),
+    //
+    // InstanceMethod("$connectSync", &Connection::ConnectSync),
+    InstanceMethod<&Connection::Connect>("$connect"),
+    InstanceMethod<&Connection::Finish>("$finish"),
+    InstanceMethod<&Connection::MarkAsFinished>("$markAsFinished"),
+
+    InstanceMethod<&Connection::GetLastErrorMessage>("$getLastErrorMessage"),
+    InstanceMethod<&Connection::ResultErrorFields>("$resultErrorFields"),
+    InstanceMethod<&Connection::Socket>("$socket"),
+    InstanceMethod<&Connection::ServerVersion>("$serverVersion"),
+
+    //sync query functions
+    InstanceMethod<&Connection::Exec>("$exec"),
+    InstanceMethod<&Connection::ExecParams>("$execParams"),
+    InstanceMethod<&Connection::Prepare>("$prepare"),
+    InstanceMethod<&Connection::ExecPrepared>("$execPrepared"),
+
+    //async query functions
+    InstanceMethod<&Connection::SendQuery>("$sendQuery"),
+    InstanceMethod<&Connection::SendQueryParams>("$sendQueryParams"),
+    InstanceMethod<&Connection::SendPrepare>("$sendPrepare"),
+    InstanceMethod<&Connection::SendQueryPrepared>("$sendQueryPrepared"),
+    InstanceMethod<&Connection::GetResult>("$getResult"),
+
+    //async i/o control functions
+    InstanceMethod<&Connection::StartRead>("$startRead"),
+    InstanceMethod<&Connection::StopRead>("$stopRead"),
+    InstanceMethod<&Connection::StartWrite>("$startWrite"),
+    InstanceMethod<&Connection::ConsumeInput>("$consumeInput"),
+    InstanceMethod<&Connection::IsBusy>("$isBusy"),
+    InstanceMethod<&Connection::SetNonBlocking>("$setNonBlocking"),
+    InstanceMethod<&Connection::IsNonBlocking>("$isNonBlocking"),
+    InstanceMethod<&Connection::Flush>("$flush"),
+
+    //result accessor functions
+    InstanceMethod("$clear", &Connection::Clear),
+    InstanceMethod("$ntuples", &Connection::Ntuples),
+    InstanceMethod("$nfields", &Connection::Nfields),
+    InstanceMethod("$fname", &Connection::Fname),
+    InstanceMethod("$ftype", &Connection::Ftype),
+    InstanceMethod("$getvalue", &Connection::Getvalue),
+    InstanceMethod("$getisnull", &Connection::Getisnull),
+    InstanceMethod("$cmdStatus", &Connection::CmdStatus),
+    InstanceMethod("$cmdTuples", &Connection::CmdTuples),
+    InstanceMethod("$resultStatus", &Connection::ResultStatus),
+    InstanceMethod("$resultErrorMessage", &Connection::ResultErrorMessage),
+
+    //string escaping functions
+  #ifdef ESCAPE_SUPPORTED
+    InstanceMethod("$escapeLiteral", &Connection::EscapeLiteral),
+    InstanceMethod("$escapeIdentifier", &Connection::EscapeIdentifier),
+  #endif
+
+    //async notifications
+    InstanceMethod("$notifies", &Connection::Notifies),
+
+    //COPY IN/OUT
+    // InstanceMethod("$putCopyData", &Connection::PutCopyData),
+    InstanceMethod("$putCopyEnd", &Connection::PutCopyEnd),
+    // InstanceMethod("$getCopyData", &Connection::GetCopyData),
+
+    //Cancel
+    // InstanceMethod("$cancel", &Connection::Cancel)
+  });
+
+  Napi::FunctionReference* constructor = new Napi::FunctionReference();
+  *constructor = Napi::Persistent(func);
+  env.SetInstanceData(constructor);
+
+  exports.Set("PQ", func);
+  return exports;
+}
+
 // Napi::Value NAPI_METHOD(Connection::Create) {
 //   TRACE("Building new instance");
 //   Connection* conn = new Connection();
@@ -38,7 +115,7 @@ void NAPI_METHOD(Connection::Connect) {
 
   Napi::Function callback = info[1].As<Napi::Function>()
   LOG("About to instantiate worker");
-  ConnectAsyncWorker* worker = new ConnectAsyncWorker(info[0].As<Napi::String>().Utf8Value().c_str(), self, callback);
+  ConnectAsyncWorker* worker = new ConnectAsyncWorker(info[0].As<Napi::String>().Utf8Value(), self, callback);
   LOG("Instantiated worker, running it...");
   self->Ref();
   self->is_reffed = true;
@@ -503,7 +580,7 @@ Napi::Value NAPI_METHOD(Connection::SetNonBlocking) {
 
   int ok = PQsetnonblocking(self->pq, info[0].As<Napi::Number>().Int32Value());
 
-  return Napi::Boolean::New(info.Env(), ok == 1);
+  return Napi::Boolean::New(info.Env(), ok == 0);
 }
 
 Napi::Value NAPI_METHOD(Connection::IsNonBlocking) {
