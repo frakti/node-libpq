@@ -15,7 +15,7 @@ Napi::Object Connection::Init(Napi::Env env, Napi::Object exports) {
   Napi::Function func = DefineClass(env, "PQ", {
     //connection initialization & management functions
     InstanceMethod<&Connection::ConnectSync>("$connectSync"),
-    //
+
     // InstanceMethod("$connectSync", &Connection::ConnectSync),
     InstanceMethod<&Connection::Connect>("$connect"),
     InstanceMethod<&Connection::Finish>("$finish"),
@@ -80,9 +80,9 @@ Napi::Object Connection::Init(Napi::Env env, Napi::Object exports) {
     // InstanceMethod("$cancel", &Connection::Cancel)
   });
 
-  Napi::FunctionReference* constructor = new Napi::FunctionReference();
-  *constructor = Napi::Persistent(func);
-  env.SetInstanceData(constructor);
+  // Napi::FunctionReference* constructor = new Napi::FunctionReference();
+  // *constructor = Napi::Persistent(func);
+  // env.SetInstanceData(constructor);
 
   exports.Set("PQ", func);
   return exports;
@@ -113,7 +113,7 @@ void NAPI_METHOD(Connection::Connect) {
 
   Connection* self = NODE_THIS();
 
-  Napi::Function callback = info[1].As<Napi::Function>()
+  Napi::Function callback = info[1].As<Napi::Function>();
   LOG("About to instantiate worker");
   ConnectAsyncWorker* worker = new ConnectAsyncWorker(info[0].As<Napi::String>().Utf8Value(), self, callback);
   LOG("Instantiated worker, running it...");
@@ -780,6 +780,29 @@ bool Connection::ConnectDB(const char* paramString) {
   TRACE("Connection::ConnectSync::Success");
   return true;
 }
+
+bool Connection::ConnectDB_v2(const char* paramString) {
+  this->pq = PQconnectdb(paramString);
+
+  ConnStatusType status = PQstatus(this->pq);
+
+  if(status != CONNECTION_OK) {
+    return false;
+  }
+
+  return true;
+}
+
+void Connection::InitiateSocket() {
+  int fd = PQsocket(this->pq);
+  this->fd = fd;
+  int socketInitStatus = uv_poll_init_socket(uv_default_loop(), &(this->poll_watcher), fd);
+
+  if (socketInitStatus == 0) {
+    is_success_poll_init = true;
+  }
+}
+
 
 char * Connection::ErrorMessage() {
   return PQerrorMessage(this->pq);

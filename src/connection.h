@@ -12,6 +12,8 @@ class Connection : public Napi::ObjectWrap<Connection> {
     Connection(const Napi::CallbackInfo& info);
     static Napi::Object Init(Napi::Env env, Napi::Object exports);
     bool ConnectDB(const char* paramString);
+    bool ConnectDB_v2(const char* paramString);
+    void InitiateSocket();
     char* ErrorMessage();
 
   private:

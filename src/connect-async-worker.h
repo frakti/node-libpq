@@ -8,7 +8,7 @@ public:
   ConnectAsyncWorker(std::string paramString, Connection* conn, Napi::Function& callback);
   virtual ~ConnectAsyncWorker() {};
   void Execute();
-  // void OnOK();
+  void OnOK();
 
 private:
   Connection* conn;

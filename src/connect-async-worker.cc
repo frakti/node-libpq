@@ -8,10 +8,13 @@ ConnectAsyncWorker::ConnectAsyncWorker(std::string paramString, Connection* conn
   //block the main node run loop
   void ConnectAsyncWorker::Execute() {
     TRACE("ConnectAsyncWorker::Execute");
-
-    bool success = conn->ConnectDB(paramString.c_str());
-
+    bool success = conn->ConnectDB_v2(paramString.c_str());
     if(!success) {
       SetError(conn->ErrorMessage());
     }
+  }
+
+  void ConnectAsyncWorker::OnOK() {
+    conn->InitiateSocket();
+    Callback().Call({ Env().Null() });
   }
